@@ -1130,7 +1130,8 @@ async function persistRefreshToken(user, refreshToken, refreshTokenExpiresAtMs) 
 
 async function issueAuthTokenPairForUser(user) {
   const tokenPair = tokenService.createTokenPair(user);
-  await persistRefreshToken(user, tokenPair.refreshToken, tokenPair.refreshTokenExpiresAt);
+  // Fire-and-forget — JWT is self-contained; DB failure must not block login.
+  persistRefreshToken(user, tokenPair.refreshToken, tokenPair.refreshTokenExpiresAt).catch(() => {});
   return tokenPair;
 }
 

@@ -485,8 +485,10 @@ function registerAuthRoutes(app, deps) {
 
   async function createAndReturnTokens(res, user) {
     const tokenPair = tokenService.createTokenPair(user);
-    await persistRefreshToken(user, tokenPair.refreshToken, tokenPair.refreshTokenExpiresAt);
+    // Set cookies FIRST — JWT access token is self-contained, does not need DB.
+    // Persist refresh token in background so a slow/failing DB never blocks login.
     setAuthCookies(res, tokenPair);
+    persistRefreshToken(user, tokenPair.refreshToken, tokenPair.refreshTokenExpiresAt).catch(() => {});
     return tokenPair;
   }
 
