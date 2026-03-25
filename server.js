@@ -2640,7 +2640,6 @@ app.get('/api/p2p/ads/:adId', async (req, res) => {
 // Convenience: mark order paid
 app.post('/api/p2p/orders/:orderId/mark-paid', requiresP2PUser, async (req, res) => {
   try {
-    await walletService.expireOrders();
     const updatedOrder = await walletService.markOrderPaid(req.params.orderId, req.p2pUser);
     const normalizedOrder = normalizeOrderState(updatedOrder);
     broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
@@ -2653,7 +2652,6 @@ app.post('/api/p2p/orders/:orderId/mark-paid', requiresP2PUser, async (req, res)
 // Convenience: cancel order
 app.post('/api/p2p/orders/:orderId/cancel', requiresP2PUser, async (req, res) => {
   try {
-    await walletService.expireOrders();
     const updatedOrder = await walletService.cancelOrder(req.params.orderId, req.p2pUser, 'CANCELLED');
     const normalizedOrder = normalizeOrderState(updatedOrder);
     broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
@@ -2800,7 +2798,6 @@ app.post('/api/merchant/activate', requiresP2PUser, async (req, res) => {
 // Returns only the current user's own active orders (for mobile Active tab)
 app.get('/api/p2p/orders/my-active', requiresP2PUser, async (req, res) => {
   try {
-    await walletService.expireOrders();
     const userId = req.p2pUser.id;
     const username = req.p2pUser.username;
     const result = await repos.listP2POrderHistory(userId, { limit: 50, offset: 0 });
@@ -2825,7 +2822,6 @@ app.get('/api/p2p/orders/live', requiresP2PUser, async (req, res) => {
   const asset = String(req.query.asset || '').trim().toUpperCase();
 
   try {
-    await walletService.expireOrders();
     const liveOrders = (await repos.listP2PLiveOrders({ side: side || undefined, asset: asset || undefined, limit: 20 }))
       .map((order) => normalizeOrderState(order))
       .map((order) => ({
@@ -2868,7 +2864,6 @@ app.get('/api/p2p/orders/by-reference/:reference', requiresP2PUser, async (req, 
   const reference = String(req.params.reference || '').trim();
 
   try {
-    await walletService.expireOrders();
     const orderByReference = await findOrderByReference(reference);
 
     if (!orderByReference) {
@@ -2889,7 +2884,6 @@ app.get('/api/p2p/orders/by-reference/:reference', requiresP2PUser, async (req, 
 
 app.post('/api/p2p/orders/:orderId/join', requiresP2PUser, async (req, res) => {
   try {
-    await walletService.expireOrders();
     const order = await repos.getP2POrderById(req.params.orderId);
 
     if (!order) {
@@ -2910,7 +2904,6 @@ app.post('/api/p2p/orders/:orderId/join', requiresP2PUser, async (req, res) => {
 
 app.get('/api/p2p/orders/:orderId', requiresP2PUser, async (req, res) => {
   try {
-    await walletService.expireOrders();
     const order = await repos.getP2POrderById(req.params.orderId);
 
     if (!order) {
@@ -2933,7 +2926,6 @@ app.post('/api/p2p/orders/:orderId/status', requiresP2PUser, async (req, res) =>
   const action = String(req.body.action || '').trim().toLowerCase();
 
   try {
-    await walletService.expireOrders();
 
     let updatedOrder = null;
     if (action === 'cancel') {
@@ -3001,7 +2993,6 @@ app.post('/api/p2p/orders/:orderId/status', requiresP2PUser, async (req, res) =>
 
 app.get('/api/p2p/orders/:orderId/messages', requiresP2PUser, async (req, res) => {
   try {
-    await walletService.expireOrders();
     const order = await repos.getP2POrderById(req.params.orderId);
 
     if (!order) {
@@ -3029,7 +3020,6 @@ app.post('/api/p2p/orders/:orderId/messages', requiresP2PUser, async (req, res) 
   }
 
   try {
-    await walletService.expireOrders();
     const mutation = await withOrderMutation(req.params.orderId, (next) => {
       if (!isParticipant(next, req.p2pUser.id)) {
         return { error: 'not_participant' };
@@ -3079,7 +3069,6 @@ app.post('/api/p2p/orders/:orderId/messages', requiresP2PUser, async (req, res) 
 
 app.get('/api/p2p/orders/:orderId/stream', requiresP2PUser, async (req, res) => {
   try {
-    await walletService.expireOrders();
     const order = await repos.getP2POrderById(req.params.orderId);
 
     if (!order) {
