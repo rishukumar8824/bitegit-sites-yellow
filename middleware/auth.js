@@ -23,6 +23,7 @@ function extractAccessTokenFromRequest(req) {
   return (
     String(cookies.access_token || '').trim() ||
     String(cookies.p2p_access_token || '').trim() ||
+    String(cookies.bitegit_auth_access || '').trim() ||
     String(cookies.admin_access_token || '').trim()
   );
 }

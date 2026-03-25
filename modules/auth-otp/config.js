@@ -68,8 +68,8 @@ function readAuthOtpConfig() {
       maxRequestsPerHour: 5
     },
     cookieNames: {
-      accessToken: String(process.env.AUTH_ACCESS_COOKIE_NAME || 'bitegit_auth_access').trim(),
-      refreshToken: String(process.env.AUTH_REFRESH_COOKIE_NAME || 'bitegit_auth_refresh').trim()
+      accessToken: String(process.env.AUTH_ACCESS_COOKIE_NAME || 'p2p_access_token').trim(),
+      refreshToken: String(process.env.AUTH_REFRESH_COOKIE_NAME || 'p2p_refresh_token').trim()
     }
   };
 }

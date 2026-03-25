@@ -1161,6 +1161,7 @@ async function getP2PUserFromRequest(req) {
   const authHeader = String(req.headers.authorization || '').trim();
   const jwtToken = (authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '') ||
     String(cookies[P2P_ACCESS_COOKIE_NAME] || '').trim() ||
+    String(cookies.bitegit_auth_access || '').trim() ||
     String(cookies.access_token || '').trim();
 
   if (jwtToken) {
