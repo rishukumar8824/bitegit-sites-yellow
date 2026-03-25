@@ -2404,12 +2404,10 @@ async function createOrder(offerId, options = {}) {
     throw new Error('Please login first.');
   }
 
-  const offer = offersMap.get(offerId);
+  const offer = offersMap.get(String(offerId || '').trim());
   if (!offer) {
-    if (metaEl) {
-      metaEl.textContent = 'Offer unavailable. Refresh and retry.';
-    }
-    throw new Error('Offer unavailable.');
+    if (metaEl) metaEl.textContent = 'Offer unavailable. Refresh and retry.';
+    throw new Error('Offer unavailable. Please refresh the page and try again.');
   }
 
   const amountValue = Number(options.amountInr ?? (amountFilter?.value || 0));
@@ -2417,45 +2415,70 @@ async function createOrder(offerId, options = {}) {
   const paymentMethod = String(options.paymentMethod || '').trim();
   const openAfterCreate = options.openAfterCreate !== false;
 
+  const payload = { offerId: String(offerId).trim(), amountInr, paymentMethod };
+  console.log('[createOrder] POST /api/p2p/orders payload:', JSON.stringify(payload));
+
+  const ctrl = new AbortController();
+  const tmr  = setTimeout(() => ctrl.abort(), 15000);
+
   try {
     const response = await fetch('/api/p2p/orders', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ offerId, amountInr, paymentMethod })
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      credentials: 'include',
+      signal: ctrl.signal,
+      body: JSON.stringify(payload)
     });
+    clearTimeout(tmr);
+
     const data = await response.json().catch(() => ({}));
+    console.log('[createOrder] response', response.status, JSON.stringify(data).slice(0, 300));
 
     if (!response.ok) {
-      const error = new Error(data.message || 'Unable to create order.');
+      const error = new Error(data.message || `Order failed (${response.status})`);
       error.code = String(data.code || '').trim().toUpperCase();
-      error.kyc = data.kyc && typeof data.kyc === 'object' ? data.kyc : null;
+      error.kyc  = data.kyc && typeof data.kyc === 'object' ? data.kyc : null;
       throw error;
+    }
+
+    if (!data.order) {
+      throw new Error('Server returned success but no order object. Please contact support.');
     }
 
     if (openAfterCreate) {
       openOrder(data.order);
     }
-    // Immediately inject new order into orders screen cache so it shows instantly
-    if (data.order) {
-      var newOrd = data.order;
-      var exists = _ordAllOrders.some(function(o) { return o.id === newOrd.id; });
-      if (!exists) {
-        _ordAllOrders.unshift(newOrd);
-        _ordLoaded = true;
-        _saveOrdCache(_ordAllOrders);
-        // Re-render orders screen if it's open
-        var ordScreen = document.getElementById('mobOrdersScreen');
-        if (ordScreen && ordScreen.style.display !== 'none') {
-          _showOrdList(_ordSubTab);
-        }
-      }
+
+    // ── Immediately inject new order into cache + orders screen ──
+    var newOrd = data.order;
+    var exists = _ordAllOrders.some(function(o) { return o.id === newOrd.id; });
+    if (!exists) {
+      _ordAllOrders.unshift(newOrd);
+    } else {
+      _ordAllOrders = _ordAllOrders.map(function(o) { return o.id === newOrd.id ? newOrd : o; });
     }
+    _ordLoaded = true;
+    _saveOrdCache(_ordAllOrders);
+
+    // Re-render orders screen if open
+    var ordScreen = document.getElementById('mobOrdersScreen');
+    if (ordScreen && ordScreen.style.display !== 'none') {
+      _showOrdList(_ordSubTab);
+    }
+
+    // Force fresh fetch from server (bypasses cache) so new order is confirmed from DB
+    console.log('[createOrder] success — forcing fresh loadBybitorOrders');
+    _ordFetching = false;
+    loadBybitorOrders();
+
     await loadLiveOrders();
     return data;
   } catch (error) {
-    if (metaEl) {
-      metaEl.textContent = error.message;
-    }
+    clearTimeout(tmr);
+    const msg = error.name === 'AbortError' ? 'Request timed out. Try again.' : error.message;
+    console.warn('[createOrder] FAILED:', msg);
+    if (metaEl) metaEl.textContent = msg;
+    error.message = msg;
     throw error;
   }
 }
@@ -2491,15 +2514,19 @@ async function submitDealOrder() {
     '<span style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:ord-spin 0.7s linear infinite;display:inline-block;"></span>' +
     'Processing…</span>';
 
-  console.log('[submitDealOrder] creating order offerId=' + activeDealOffer.id);
+  console.log('[submitDealOrder] creating order offerId=' + activeDealOffer.id + ' amountInr=' + amountInr + ' paymentMethod=' + paymentMethod);
   try {
     const data = await createOrder(activeDealOffer.id, { amountInr, paymentMethod, openAfterCreate: false });
-    if (!data?.order) throw new Error('Unable to create order.');
-    setDealHint(`${data.message} Ref: ${data.order.reference}`, 'success');
+    if (!data?.order) throw new Error('Server did not return order. Please check Orders screen.');
+    console.log('[submitDealOrder] order created ref=' + data.order.reference + ' id=' + data.order.id);
+    setDealHint('Order created! Ref: ' + data.order.reference, 'success');
     closeDealModal();
     openOrder(data.order);
+    // Ensure orders screen shows fresh data immediately
+    _ordLoaded = false;
+    _ordFetching = false;
   } catch (error) {
-    console.warn('[submitDealOrder] error:', error.message);
+    console.warn('[submitDealOrder] FAILED:', error.message, 'code=' + (error.code || 'none'));
     setDealHint(error.message || 'Unable to create order.', 'error');
   } finally {
     _dealSubmitLock = false;
@@ -3460,11 +3487,29 @@ function switchOrdSub(sub) {
 }
 
 var _ORD_CACHE_KEY = 'p2p_orders_cache';
+var _ORD_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — discard stale cache so new orders always show
 function _saveOrdCache(orders) {
-  try { localStorage.setItem(_ORD_CACHE_KEY, JSON.stringify(orders)); } catch(e){}
+  try {
+    localStorage.setItem(_ORD_CACHE_KEY, JSON.stringify({ ts: Date.now(), orders: orders }));
+  } catch(e){}
 }
 function _loadOrdCache() {
-  try { return JSON.parse(localStorage.getItem(_ORD_CACHE_KEY) || '[]'); } catch(e){ return []; }
+  try {
+    var raw = JSON.parse(localStorage.getItem(_ORD_CACHE_KEY) || 'null');
+    if (!raw) return [];
+    // Support old plain-array format
+    if (Array.isArray(raw)) {
+      localStorage.removeItem(_ORD_CACHE_KEY); // wipe stale format
+      return [];
+    }
+    // Discard if older than TTL — ensures new orders are never hidden by stale cache
+    if (!raw.ts || (Date.now() - raw.ts) > _ORD_CACHE_TTL_MS) {
+      console.log('[ordCache] expired — discarding');
+      localStorage.removeItem(_ORD_CACHE_KEY);
+      return [];
+    }
+    return Array.isArray(raw.orders) ? raw.orders : [];
+  } catch(e) { return []; }
 }
 
 var _ordFetching = false; // in-flight lock — prevents stacked parallel calls
@@ -3563,7 +3608,8 @@ function loadBybitorOrders() {
   console.log('[loadBybitorOrders] fetching /api/p2p/orders/my-active');
 
   // fetch active orders first (most important), then history
-  fetchOrFail('/api/p2p/orders/my-active', { credentials: 'include' })
+  // Cache-Control: no-store prevents browser from serving stale orders
+  fetchOrFail('/api/p2p/orders/my-active', { credentials: 'include', headers: { 'Cache-Control': 'no-store' } })
     .then(function(r1) {
       console.log('[loadBybitorOrders] my-active response', r1.status, r1._timedOut ? '(timed out)' : '');
       if (r1.status === 401) { showLoginPrompt(); return; }
@@ -3575,7 +3621,7 @@ function loadBybitorOrders() {
           // Render active orders immediately — don't wait for history
           try { renderAll(d1.orders || [], false); } catch(e) {}
           // Then fetch history in the background and merge
-          fetchOrFail('/api/p2p/orders/history?limit=50&offset=0', { credentials: 'include' })
+          fetchOrFail('/api/p2p/orders/history?limit=50&offset=0', { credentials: 'include', headers: { 'Cache-Control': 'no-store' } })
             .then(function(r2) {
               if (!r2.ok || r2._timedOut) return;
               return r2.json().catch(function() { return { orders: [] }; });
