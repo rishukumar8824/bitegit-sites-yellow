@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" /><meta name="theme-color" content="#000000"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Bitegit | Crypto Exchange</title>
+    <link rel="stylesheet" href="/styles.css?v=20260303x" />
+    <link rel="stylesheet" href="/coinflare.css?v=20260304e" />
+    <link rel="stylesheet" href="/mobile-nav.css?v=20260303x" />
+  <script src="/app-nav.js" defer></script></head>
+  <body class="coinflare-page has-mobile-nav">
+    <div class="cf-bg-grid" aria-hidden="true"></div>
+
+    <header class="cf-header" id="homeHeader">
+      <div class="cf-header-inner">
+        <a href="/" class="cf-brand">
+          <span class="cf-brand-mark" aria-hidden="true"></span>
+          <span class="cf-brand-word">Bitegit</span>
+        </a>
+
+        <nav class="cf-nav" aria-label="Primary navigation">
+          <a href="/" class="active-link">Buy Crypto</a>
+          <a href="/markets.html">Markets</a>
+          <a href="/p2p">P2P</a>
+          <a href="/chart.html?symbol=BTCUSDT">Derivatives</a>
+          <a href="/">Earn</a>
+          <a href="/">Learn</a>
+        </nav>
+
+        <div class="cf-actions">
+          <a id="topLoginBtn" class="cf-login" href="/auth.html" data-auth-guest-only>Log In</a>
+          <a id="topSignupBtn" href="/auth.html?mode=signup" class="cf-signup" data-auth-guest-only>Register</a>
+          <a id="topAssetsBtn" href="/assets" class="cf-login hidden" data-auth-user-only>Assets</a>
+          <button id="topLogoutBtn" type="button" class="cf-login hidden" data-auth-user-only>Logout</button>
+          <button id="homeNavToggle" class="cf-nav-toggle" type="button" aria-label="Open navigation" aria-controls="homeNavDrawer" aria-expanded="false">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div id="homeNavOverlay" class="cf-nav-overlay hidden" aria-hidden="true"></div>
+
+    <aside id="homeNavDrawer" class="cf-nav-drawer" aria-hidden="true">
+      <div class="cf-nav-drawer-head">
+        <strong class="cf-drawer-brand">
+          <span class="cf-brand-mark" aria-hidden="true"></span>
+          <span>Bitegit</span>
+        </strong>
+        <button id="homeNavClose" type="button" aria-label="Close navigation">✕</button>
+      </div>
+      <nav class="cf-nav-drawer-links" aria-label="Mobile navigation">
+        <a href="/">Buy Crypto</a>
+        <a href="/markets.html">Markets</a>
+        <a href="/chart.html?symbol=BTCUSDT">Spot</a>
+        <a href="/chart.html?symbol=BTCUSDT">Futures</a>
+        <a href="/p2p">P2P</a>
+        <a href="/">Event Contract</a>
+        <a href="/">Alpha Pass</a>
+        <a href="/">Alpha Pool</a>
+        <a href="/">Benefits Center</a>
+        <a href="/">US Stocks RWA</a>
+        <a href="/">Earn</a>
+        <a href="/">ICO</a>
+        <a href="/">Support</a>
+        <a href="/assets">Assets</a>
+      </nav>
+      <div class="cf-nav-drawer-actions">
+        <a id="drawerLoginLink" href="/auth.html" class="cf-login" data-auth-guest-only>Log In</a>
+        <a id="drawerSignupLink" href="/auth.html?mode=signup" class="cf-signup-link" data-auth-guest-only>Register</a>
+        <a id="drawerAssetsLink" href="/assets" class="cf-login hidden" data-auth-user-only>Assets</a>
+        <button id="drawerLogoutBtn" type="button" class="cf-login hidden" data-auth-user-only>Logout</button>
+      </div>
+    </aside>
+
+    <div id="signupPromptModal" class="cf-signup-modal hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="signupPromptTitle">
+      <div id="signupPromptBackdrop" class="cf-signup-modal-backdrop"></div>
+      <div class="cf-signup-modal-card">
+        <h3 id="signupPromptTitle">Continue with Email</h3>
+        <p>Enter your email to receive verification code.</p>
+        <label for="signupPromptEmail" class="sr-only">Email address</label>
+        <input id="signupPromptEmail" type="email" inputmode="email" placeholder="Enter email address" autocomplete="email" />
+        <p id="signupPromptMessage" class="cf-signup-modal-message" role="status" aria-live="polite"></p>
+        <div class="cf-signup-modal-actions">
+          <button id="signupPromptContinue" type="button">Continue</button>
+          <button id="signupPromptClose" type="button" class="secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="cf-hero-video-section cf-reveal is-visible" aria-label="Hero video">
+      <video id="heroBgVideo" class="cf-hero-video" autoplay muted loop playsinline preload="auto" style="display:none">
+        <source src="/videos/hero.mp4" type="video/mp4" />
+      </video>
+      <canvas id="heroBgCanvas" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"></canvas>
+    </section>
+    <script>
+    (function(){
+      const vid = document.getElementById('heroBgVideo');
+      const canvas = document.getElementById('heroBgCanvas');
+      const ctx = canvas.getContext('2d', {willReadFrequently: true});
+      const THRESHOLD = 40;
+      function drawFrame() {
+        if (vid.paused || vid.ended) return;
+        canvas.width = vid.videoWidth || canvas.offsetWidth;
+        canvas.height = vid.videoHeight || canvas.offsetHeight;
+        ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+        const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = frame.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const r = d[i], g = d[i+1], b = d[i+2];
+          if (r < THRESHOLD && g < THRESHOLD && b < THRESHOLD) d[i+3] = 0;
+        }
+        ctx.putImageData(frame, 0, 0);
+        requestAnimationFrame(drawFrame);
+      }
+      vid.addEventListener('play', drawFrame);
+      vid.play().catch(()=>{});
+    })();
+    </script>
+
+    <main class="cf-main">
+      <section class="cf-hero cf-reveal is-visible">
+        <div class="cf-hero-left">
+          <div id="heroGuestPanel" data-auth-guest-only>
+            <form id="leadForm" class="cf-lead-form" novalidate>
+              <input id="name" name="name" type="hidden" value="Bitegit Signup Lead" />
+              <label for="mobile" class="sr-only">Email address</label>
+              <input id="mobile" name="mobile" type="email" inputmode="email" placeholder="Enter email address" autocomplete="email" required />
+              <button type="submit">Create Account</button>
+            </form>
+
+            <div id="otpRow" class="cf-otp-row hidden">
+              <label for="otpInput" class="sr-only">Enter OTP code</label>
+              <input id="otpInput" type="text" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit code" />
+              <button id="verifyOtpBtn" type="button">Verify Code</button>
+            </div>
+
+            <div class="cf-social-row">
+              <span>Or continue with</span>
+              <a class="social-pill" data-provider="google" href="/auth.html?mode=signup&via=google">G</a>
+              <a class="social-pill" data-provider="apple" href="/auth.html?mode=signup&via=apple">A</a>
+              <a class="social-pill" data-provider="qr" href="/auth.html?mode=signup&via=qr">QR</a>
+            </div>
+          </div>
+
+          <div id="heroUserPanel" class="cf-user-panel hidden" data-auth-user-only>
+            <span class="cf-user-badge">Signed in</span>
+            <h2 id="heroUserName">Bitegit User</h2>
+            <p id="heroUserMeta">Your account is ready for markets, P2P and assets.</p>
+            <div class="cf-user-actions">
+              <a href="/p2p" class="cf-signup">Open P2P</a>
+              <a href="/assets" class="cf-login">View Assets</a>
+            </div>
+            <button id="heroLogoutBtn" type="button" class="cf-user-logout">Logout</button>
+          </div>
+
+          <p id="message" class="message" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="cf-hero-right">
+          <div class="cf-mobile-events">
+            <div class="cf-announcement-bar">
+              <span class="cf-announcement-tag">Important notice</span>
+              <div class="cf-announcement-marquee" aria-label="Latest announcement">
+                <div class="cf-announcement-track">
+                  <span>[Announcement] Bitegit rewards and platform updates are live now.</span>
+                  <span aria-hidden="true">[Announcement] Bitegit rewards and platform updates are live now.</span>
+                </div>
+              </div>
+              <a href="/">More</a>
+            </div>
+
+            <div class="gp-promo-wrap">
+              <div class="gp-promo-track" id="gpPromoTrack">
+
+                <article class="gp-promo-card">
+                  <div class="gp-promo-copy">
+                    <h4>Futures Mall Phase 4: Redeem TREK Bikes, Golf Sets, USDT Cash</h4>
+                    <a href="#" class="gp-join-now">Join Now &rsaquo;</a>
+                  </div>
+                  <div class="gp-promo-art gp-art-bike" aria-hidden="true">
+                    <span class="gp-art-dot gp-dot-blue"></span>
+                    <span class="gp-art-dot gp-dot-green"></span>
+                    <span class="gp-art-icon">🚲</span>
+                  </div>
+                </article>
+
+                <article class="gp-promo-card">
+                  <div class="gp-promo-copy">
+                    <h4>Double-Week Earning Plan: Daily Check-In &amp; Win Up to 1,350 USDT per User</h4>
+                    <a href="#" class="gp-join-now">Join Now &rsaquo;</a>
+                  </div>
+                  <div class="gp-promo-art gp-art-crown" aria-hidden="true">
+                    <span class="gp-art-dot gp-dot-green"></span>
+                    <span class="gp-art-dot gp-dot-black"></span>
+                    <span class="gp-art-icon">👑</span>
+                  </div>
+                </article>
+
+                <article class="gp-promo-card">
+                  <div class="gp-promo-copy">
+                    <h4>Spring Rewards Airdrop: Unlock a 45,000 USDT Position Bonus Pool</h4>
+                    <a href="#" class="gp-join-now">Join Now &rsaquo;</a>
+                  </div>
+                  <div class="gp-promo-art gp-art-usdt" aria-hidden="true">
+                    <span class="gp-art-dot gp-dot-green"></span>
+                    <span class="gp-art-icon">💰</span>
+                  </div>
+                </article>
+
+                <article class="gp-promo-card">
+                  <div class="gp-promo-copy">
+                    <h4>New P2P User Incentive Program: Complete P2P Deposit Task &amp; Share 5,000 USDT Cash Prize Pool</h4>
+                    <a href="#" class="gp-join-now">Join Now &rsaquo;</a>
+                  </div>
+                  <div class="gp-promo-art gp-art-p2p" aria-hidden="true">
+                    <span class="gp-art-icon">👥</span>
+                  </div>
+                </article>
+
+              </div>
+              <div class="gp-promo-dots" id="gpPromoDots">
+                <span class="gp-dot active"></span>
+                <span class="gp-dot"></span>
+                <span class="gp-dot"></span>
+                <span class="gp-dot"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cf-exchange-ticker-bar" aria-label="Live market ticker">
+            <div class="cf-exchange-ticker-marquee">
+              <div class="cf-exchange-ticker-track" id="exchangeTickerTrack">
+                <span class="cf-exchange-ticker-item">BTC/USDT <strong>$--</strong> <em>--%</em></span>
+                <span class="cf-exchange-ticker-item">ETH/USDT <strong>$--</strong> <em>--%</em></span>
+                <span class="cf-exchange-ticker-item">SOL/USDT <strong>$--</strong> <em>--%</em></span>
+                <span class="cf-exchange-ticker-item">XRP/USDT <strong>$--</strong> <em>--%</em></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cf-news-card">
+            <h4>News</h4>
+            <ul id="newsList"></ul>
+          </div>
+
+          <div class="cf-hero-stats" id="statsSection">
+            <article>
+              <strong>$1.4B+</strong>
+              <span>24H Volume</span>
+            </article>
+            <article>
+              <strong>220K+</strong>
+              <span>Active Traders</span>
+            </article>
+            <article>
+              <strong>99.99%</strong>
+              <span>Uptime</span>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Market Section ── -->
+      <section class="cf-fullmkt cf-reveal is-visible" aria-label="Live markets">
+        <div class="cf-fullmkt-inner">
+
+          <!-- Category Tabs: Popular / Market Trends / 24H Change / New Coin List -->
+          <div class="cf-fullmkt-cattabs-wrap">
+            <div id="homeCatTabs" class="cf-fullmkt-cattabs" role="tablist" aria-label="Market categories">
+              <button type="button" class="active" data-cattab="popular" role="tab" aria-selected="true">Popular</button>
+              <button type="button" data-cattab="trends" role="tab" aria-selected="false">Market Trends</button>
+              <button type="button" data-cattab="change24h" role="tab" aria-selected="false">24H Change</button>
+              <button type="button" data-cattab="newcoin" role="tab" aria-selected="false">New Coin List</button>
+            </div>
+          </div>
+
+          <!-- Sub Tabs: Spot / Futures -->
+          <div id="homeMktTabs" class="cf-fullmkt-subtabs" role="tablist" aria-label="Market type">
+            <button type="button" class="active" data-hmtab="spot" role="tab" aria-selected="true">Spot</button>
+            <button type="button" data-hmtab="futures" role="tab" aria-selected="false">Futures</button>
+          </div>
+
+          <!-- Table -->
+          <div class="cf-fullmkt-table-wrap">
+            <table class="cf-fullmkt-table" aria-label="Live market prices">
+              <thead>
+                <tr>
+                  <th>Trading Pair</th>
+                  <th>Price</th>
+                  <th>24H Change</th>
+                </tr>
+              </thead>
+              <tbody id="homeMktBody">
+                <tr class="cf-fullmkt-loading"><td colspan="3"><span class="cf-fullmkt-spinner"></span>Loading markets…</td></tr>
+              </tbody>
+            </table>
+            <a class="cf-fullmkt-viewall" href="/markets.html">View More &rsaquo;</a>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Payment Partners Marquee - right below market pairs -->
+      <section class="cf-pay-partners-strip">
+        <div class="cf-pay-partners-label">Our Payment Partners</div>
+        <div class="cf-pay-marquee-wrap">
+          <div class="cf-pay-marquee-track" id="payTrack">
+
+            <span class="cf-pay-item">
+              <svg width="32" height="20" viewBox="0 0 32 20"><rect width="32" height="20" rx="4" fill="#1A1F71"/><text x="16" y="15" text-anchor="middle" font-size="11" font-weight="900" font-style="italic" font-family="Arial" fill="#fff" letter-spacing="1">VISA</text></svg>
+              Visa
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="32" height="20" viewBox="0 0 32 20"><rect width="32" height="20" rx="4" fill="#252525"/><circle cx="12" cy="10" r="7" fill="#EB001B"/><circle cx="20" cy="10" r="7" fill="#F79E1B"/><ellipse cx="16" cy="10" rx="3" ry="7" fill="#FF5F00" opacity="0.9"/></svg>
+              Mastercard
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="14" fill="#F7931A"/><text x="14" y="20" text-anchor="middle" font-size="16" font-weight="900" font-family="Arial" fill="#fff">₿</text></svg>
+              Bitcoin
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="14" fill="#627EEA"/><polygon points="14,4 14,15.5 22,17.5" fill="rgba(255,255,255,0.6)"/><polygon points="14,4 6,17.5 14,15.5" fill="#fff"/><polygon points="14,17 22,18.5 14,24" fill="rgba(255,255,255,0.6)"/><polygon points="14,24 6,18.5 14,17" fill="#fff"/></svg>
+              Ethereum
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="14" fill="#26A17B"/><text x="14" y="20" text-anchor="middle" font-size="14" font-weight="900" font-family="Arial" fill="#fff">₮</text></svg>
+              USDT
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="14" fill="#F3BA2F"/><text x="14" y="19" text-anchor="middle" font-size="13" font-weight="900" font-family="Arial" fill="#1a1a1a">BNB</text></svg>
+              Binance Pay
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#000"/><text x="14" y="21" text-anchor="middle" font-size="18" font-family="Arial" fill="#fff"></text></svg>
+              Apple Pay
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#fff"/><text x="14" y="21" text-anchor="middle" font-size="16" font-weight="700" font-family="Arial" fill="#4285F4">G</text></svg>
+              Google Pay
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#003087"/><text x="14" y="19" text-anchor="middle" font-size="13" font-weight="900" font-family="Arial" fill="#fff">Pay</text><text x="14" y="11" text-anchor="middle" font-size="10" font-weight="700" font-family="Arial" fill="#009cde">Pal</text></svg>
+              PayPal
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#1B1B2F"/><polygon points="14,4 18,14 14,12 10,14" fill="#FFD700"/><polygon points="14,12 18,14 14,24 10,14" fill="#FFA500"/></svg>
+              Lightning
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#003087"/><circle cx="14" cy="14" r="9" fill="none" stroke="#fff" stroke-width="1.5"/><line x1="14" y1="5" x2="14" y2="23" stroke="#fff" stroke-width="1"/><line x1="5" y1="14" x2="23" y2="14" stroke="#fff" stroke-width="1"/><path d="M8,8 Q14,11 20,8" fill="none" stroke="#fff" stroke-width="1"/><path d="M8,20 Q14,17 20,20" fill="none" stroke="#fff" stroke-width="1"/></svg>
+              SWIFT
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#1a1a2e"/><path d="M14 5 L9 9 L9 19 L14 23 L19 19 L19 9 Z" fill="none" stroke="#9B59B6" stroke-width="2"/><text x="14" y="18" text-anchor="middle" font-size="9" font-weight="700" font-family="Arial" fill="#9B59B6">ACH</text></svg>
+              Alchemy Pay
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#0d2137"/><path d="M14 4 L22 9 L22 19 L14 24 L6 19 L6 9 Z" fill="none" stroke="#00b897" stroke-width="2"/><text x="14" y="18" text-anchor="middle" font-size="8" font-weight="700" font-family="Arial" fill="#00b897">SAFE</text></svg>
+              CoinCover
+            </span>
+
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#1a1a2e"/><text x="14" y="19" text-anchor="middle" font-size="11" font-weight="700" font-family="Arial" fill="#00d4aa">BANK</text></svg>
+              Bank Transfer
+            </span>
+
+            <!-- duplicate set for seamless loop -->
+            <span class="cf-pay-item">
+              <svg width="32" height="20" viewBox="0 0 32 20"><rect width="32" height="20" rx="4" fill="#1A1F71"/><text x="16" y="15" text-anchor="middle" font-size="11" font-weight="900" font-style="italic" font-family="Arial" fill="#fff" letter-spacing="1">VISA</text></svg>
+              Visa
+            </span>
+            <span class="cf-pay-item">
+              <svg width="32" height="20" viewBox="0 0 32 20"><rect width="32" height="20" rx="4" fill="#252525"/><circle cx="12" cy="10" r="7" fill="#EB001B"/><circle cx="20" cy="10" r="7" fill="#F79E1B"/><ellipse cx="16" cy="10" rx="3" ry="7" fill="#FF5F00" opacity="0.9"/></svg>
+              Mastercard
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="14" fill="#F7931A"/><text x="14" y="20" text-anchor="middle" font-size="16" font-weight="900" font-family="Arial" fill="#fff">₿</text></svg>
+              Bitcoin
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="14" fill="#627EEA"/><polygon points="14,4 14,15.5 22,17.5" fill="rgba(255,255,255,0.6)"/><polygon points="14,4 6,17.5 14,15.5" fill="#fff"/><polygon points="14,17 22,18.5 14,24" fill="rgba(255,255,255,0.6)"/><polygon points="14,24 6,18.5 14,17" fill="#fff"/></svg>
+              Ethereum
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="14" fill="#26A17B"/><text x="14" y="20" text-anchor="middle" font-size="14" font-weight="900" font-family="Arial" fill="#fff">₮</text></svg>
+              USDT
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="14" fill="#F3BA2F"/><text x="14" y="19" text-anchor="middle" font-size="13" font-weight="900" font-family="Arial" fill="#1a1a1a">BNB</text></svg>
+              Binance Pay
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#000"/><text x="14" y="21" text-anchor="middle" font-size="18" font-family="Arial" fill="#fff"></text></svg>
+              Apple Pay
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#fff"/><text x="14" y="21" text-anchor="middle" font-size="16" font-weight="700" font-family="Arial" fill="#4285F4">G</text></svg>
+              Google Pay
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#003087"/><text x="14" y="19" text-anchor="middle" font-size="13" font-weight="900" font-family="Arial" fill="#fff">Pay</text><text x="14" y="11" text-anchor="middle" font-size="10" font-weight="700" font-family="Arial" fill="#009cde">Pal</text></svg>
+              PayPal
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#1B1B2F"/><polygon points="14,4 18,14 14,12 10,14" fill="#FFD700"/><polygon points="14,12 18,14 14,24 10,14" fill="#FFA500"/></svg>
+              Lightning
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#003087"/><circle cx="14" cy="14" r="9" fill="none" stroke="#fff" stroke-width="1.5"/><line x1="14" y1="5" x2="14" y2="23" stroke="#fff" stroke-width="1"/><line x1="5" y1="14" x2="23" y2="14" stroke="#fff" stroke-width="1"/><path d="M8,8 Q14,11 20,8" fill="none" stroke="#fff" stroke-width="1"/><path d="M8,20 Q14,17 20,20" fill="none" stroke="#fff" stroke-width="1"/></svg>
+              SWIFT
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#1a1a2e"/><path d="M14 5 L9 9 L9 19 L14 23 L19 19 L19 9 Z" fill="none" stroke="#9B59B6" stroke-width="2"/><text x="14" y="18" text-anchor="middle" font-size="9" font-weight="700" font-family="Arial" fill="#9B59B6">ACH</text></svg>
+              Alchemy Pay
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#0d2137"/><path d="M14 4 L22 9 L22 19 L14 24 L6 19 L6 9 Z" fill="none" stroke="#00b897" stroke-width="2"/><text x="14" y="18" text-anchor="middle" font-size="8" font-weight="700" font-family="Arial" fill="#00b897">SAFE</text></svg>
+              CoinCover
+            </span>
+            <span class="cf-pay-item">
+              <svg width="28" height="28" viewBox="0 0 28 28"><rect width="28" height="28" rx="6" fill="#1a1a2e"/><text x="14" y="19" text-anchor="middle" font-size="11" font-weight="700" font-family="Arial" fill="#00d4aa">BANK</text></svg>
+              Bank Transfer
+            </span>
+
+          </div>
+        </div>
+      </section>
+
+      <section class="cf-everyone cf-reveal is-visible">
+        <h2>Crypto <span>for everyone</span></h2>
+
+        <div class="cf-trust-section">
+          <p class="cf-trust-sub">Trusted by Industry Leaders</p>
+          <p class="cf-trust-desc">Backed by top investors and compliant with global regulatory standards</p>
+
+          <div class="cf-trust-marquee-wrap">
+            <div class="cf-trust-row cf-trust-row-fwd">
+              <div class="cf-trust-track">
+                <div class="cf-trust-logo">Bitget</div>
+                <div class="cf-trust-logo"><span>⊙</span> CoinMarketCap</div>
+                <div class="cf-trust-logo"><span>▲</span> AVE.AI</div>
+                <div class="cf-trust-logo">TIK</div>
+                <div class="cf-trust-logo">⫿⫿ Chain Catcher</div>
+                <div class="cf-trust-logo"><span>✦</span> RootData</div>
+                <div class="cf-trust-logo">CoinGecko</div>
+                <div class="cf-trust-logo">Forbes</div>
+                <!-- duplicate for seamless loop -->
+                <div class="cf-trust-logo">Bitget</div>
+                <div class="cf-trust-logo"><span>⊙</span> CoinMarketCap</div>
+                <div class="cf-trust-logo"><span>▲</span> AVE.AI</div>
+                <div class="cf-trust-logo">TIK</div>
+                <div class="cf-trust-logo">⫿⫿ Chain Catcher</div>
+                <div class="cf-trust-logo"><span>✦</span> RootData</div>
+                <div class="cf-trust-logo">CoinGecko</div>
+                <div class="cf-trust-logo">Forbes</div>
+              </div>
+            </div>
+            <div class="cf-trust-row cf-trust-row-rev">
+              <div class="cf-trust-track">
+                <div class="cf-trust-logo">Binance</div>
+                <div class="cf-trust-logo">Bloomberg</div>
+                <div class="cf-trust-logo"><span>◈</span> Messari</div>
+                <div class="cf-trust-logo">Bybit</div>
+                <div class="cf-trust-logo"><span>◉</span> CoinDesk</div>
+                <div class="cf-trust-logo">OKX</div>
+                <div class="cf-trust-logo">Sequoia</div>
+                <div class="cf-trust-logo">Andreessen</div>
+                <!-- duplicate for seamless loop -->
+                <div class="cf-trust-logo">Binance</div>
+                <div class="cf-trust-logo">Bloomberg</div>
+                <div class="cf-trust-logo"><span>◈</span> Messari</div>
+                <div class="cf-trust-logo">Bybit</div>
+                <div class="cf-trust-logo"><span>◉</span> CoinDesk</div>
+                <div class="cf-trust-logo">OKX</div>
+                <div class="cf-trust-logo">Sequoia</div>
+                <div class="cf-trust-logo">Andreessen</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="cf-trading-exp cf-reveal">
+        <h2>Choose your <span>trading experience</span></h2>
+        <div class="cf-mode-switch" role="group" aria-label="Mode switch">
+          <button type="button" class="active">Flash</button>
+          <button type="button">Pro</button>
+        </div>
+
+        <div class="cf-terminal">
+          <div class="cf-terminal-top">
+            <p>BTCUSDT Perpetual</p>
+            <span>+4.50%</span>
+          </div>
+          <div class="cf-terminal-body">
+            <div class="cf-chart-mock">
+              <svg viewBox="0 0 680 280" preserveAspectRatio="none" aria-hidden="true">
+                <polyline
+                  fill="none"
+                  stroke="#84ff1f"
+                  stroke-width="3"
+                  points="0,230 40,210 80,220 120,180 160,195 200,150 240,172 280,120 320,152 360,100 400,125 440,80 480,120 520,92 560,70 600,90 640,40 680,64"
+                />
+              </svg>
+            </div>
+            <aside class="cf-order-box">
+              <h4>Long / Short</h4>
+              <p>Market Order</p>
+              <input type="text" value="100.00 USDT" readonly />
+              <button type="button">Long</button>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="cf-app-block cf-mobile-promo-video cf-reveal" aria-label="Mobile app promo">
+        <div class="cf-mobile-promo-video-shell">
+          <video class="cf-mobile-video" autoplay muted loop playsinline preload="metadata">
+            <source src="/videos/mobile.mp4" type="video/mp4" />
+          </video>
+        </div>
+      </section>
+
+
+      <section class="cf-testimonials cf-copy-section cf-reveal" aria-label="Copy trading">
+        <h2>Copy Top Traders - Earn <span>Passive Income</span></h2>
+        <p class="cf-copy-subtitle">Smart Copy Trading - Curated Strategies</p>
+
+        <div class="cf-copy-grid">
+          <article class="cf-copy-card" data-copy-symbol="BTCUSDT">
+            <div class="cf-copy-head">
+              <span class="avatar">FK</span>
+              <div>
+                <h4>放点麻酱</h4>
+                <p>8.0/2000</p>
+              </div>
+            </div>
+            <div class="cf-copy-metrics">
+              <p><span>14 Day(s) ROI</span><strong class="up">+431.91%</strong></p>
+              <p><span>14-Day Win Rate</span><strong>100.00%</strong></p>
+              <p><span>Accumulated Copy Funds</span><strong>120.81</strong></p>
+            </div>
+            <div class="cf-copy-chart" aria-hidden="true">
+              <svg viewBox="0 0 320 92" preserveAspectRatio="none">
+                <polyline points="0,78 34,78 70,78 104,78 138,78 172,78 206,78 234,78 248,74 260,28 276,76 292,30 308,26 320,27" />
+              </svg>
+            </div>
+            <button type="button" class="cf-copy-btn" data-copy-symbol="BTCUSDT">Copy Trading</button>
+          </article>
+
+          <article class="cf-copy-card is-highlight" data-copy-symbol="ETHUSDT">
+            <div class="cf-copy-head">
+              <span class="avatar">XJ</span>
+              <div>
+                <h4>小止盈</h4>
+                <p>8.1/100</p>
+              </div>
+            </div>
+            <div class="cf-copy-metrics">
+              <p><span>14 Day(s) ROI</span><strong class="up">+39.56%</strong></p>
+              <p><span>14-Day Win Rate</span><strong>87.50%</strong></p>
+              <p><span>Accumulated Copy Funds</span><strong>99.57</strong></p>
+            </div>
+            <div class="cf-copy-chart" aria-hidden="true">
+              <svg viewBox="0 0 320 92" preserveAspectRatio="none">
+                <polyline points="0,74 28,73 58,71 88,69 116,66 144,62 172,56 200,51 230,46 260,39 290,34 320,29" />
+              </svg>
+            </div>
+            <button type="button" class="cf-copy-btn" data-copy-symbol="ETHUSDT">Copy Trading</button>
+          </article>
+
+          <article class="cf-copy-card" data-copy-symbol="SOLUSDT">
+            <div class="cf-copy-head">
+              <span class="avatar">KH</span>
+              <div>
+                <h4>KaiHedge</h4>
+                <p>6.9/500</p>
+              </div>
+            </div>
+            <div class="cf-copy-metrics">
+              <p><span>14 Day(s) ROI</span><strong class="up">+22.14%</strong></p>
+              <p><span>14-Day Win Rate</span><strong>81.20%</strong></p>
+              <p><span>Accumulated Copy Funds</span><strong>76.43</strong></p>
+            </div>
+            <div class="cf-copy-chart" aria-hidden="true">
+              <svg viewBox="0 0 320 92" preserveAspectRatio="none">
+                <polyline points="0,80 30,78 60,74 90,70 120,66 150,60 180,58 210,54 240,48 270,45 300,40 320,36" />
+              </svg>
+            </div>
+            <button type="button" class="cf-copy-btn" data-copy-symbol="SOLUSDT">Copy Trading</button>
+          </article>
+        </div>
+      </section>
+
+      <!-- Coin marquee strip -->
+      <section class="coin-marquee-section">
+        <!-- Row 1: left → right -->
+        <div class="coin-marquee-row">
+          <div class="coin-marquee-track coin-track-ltr">
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/325/large/Tether.png" alt="USDT"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/6319/large/USD_Coin_icon.png" alt="USDC"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/1/large/bitcoin.png" alt="BTC"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/279/large/ethereum.png" alt="ETH"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png" alt="AVAX"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/4128/large/solana.png" alt="SOL"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/7598/large/wrapped_bitcoin_wbtc.png" alt="WBTC"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/5/large/dogecoin.png" alt="DOGE"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/11939/large/shiba.png" alt="SHIB"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png" alt="XRP"/></span>
+            <!-- duplicate for seamless loop -->
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/325/large/Tether.png" alt="USDT"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/6319/large/USD_Coin_icon.png" alt="USDC"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/1/large/bitcoin.png" alt="BTC"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/279/large/ethereum.png" alt="ETH"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/12559/large/Avalanche_Circle_RedWhite_Trans.png" alt="AVAX"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/4128/large/solana.png" alt="SOL"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/7598/large/wrapped_bitcoin_wbtc.png" alt="WBTC"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/5/large/dogecoin.png" alt="DOGE"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/11939/large/shiba.png" alt="SHIB"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png" alt="XRP"/></span>
+          </div>
+        </div>
+        <!-- Row 2: right → left -->
+        <div class="coin-marquee-row">
+          <div class="coin-marquee-track coin-track-rtl">
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/2518/large/weth.png" alt="WETH"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/975/large/cardano.png" alt="ADA"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/13442/large/steth_logo.png" alt="stETH"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/9576/large/BUSD.png" alt="BUSD"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/8284/large/01_LightBackground.png" alt="UNI"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/10775/large/LINK_token.png" alt="LINK"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png" alt="BNB"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/14495/large/Internet_Computer_logo.png" alt="ICP"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/15585/large/near.png" alt="NEAR"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/9702/large/matic-token-icon.png" alt="MATIC"/></span>
+            <!-- duplicate -->
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/2518/large/weth.png" alt="WETH"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/975/large/cardano.png" alt="ADA"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/13442/large/steth_logo.png" alt="stETH"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/9576/large/BUSD.png" alt="BUSD"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/8284/large/01_LightBackground.png" alt="UNI"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/10775/large/LINK_token.png" alt="LINK"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/825/large/bnb-icon2_2x.png" alt="BNB"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/14495/large/Internet_Computer_logo.png" alt="ICP"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/15585/large/near.png" alt="NEAR"/></span>
+            <span class="coin-logo"><img src="https://assets.coingecko.com/coins/images/9702/large/matic-token-icon.png" alt="MATIC"/></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="cf-neon-strip cf-reveal">
+        <p>Bitegit</p>
+      </section>
+
+    </main>
+
+    <footer class="cf-footer cf-reveal">
+      <div class="cf-footer-mobile" aria-label="Mobile footer">
+        <div class="cf-footer-mobile-head">
+          <a href="/" class="cf-footer-mobile-brand">Bitegit</a>
+          <p>Unlock the gateway to your cryptocurrency universe</p>
+        </div>
+
+        <div class="cf-footer-accordions">
+          <details class="cf-footer-accordion-item">
+            <summary>
+              <span>About Us</span>
+              <span class="cf-acc-arrow">⌄</span>
+            </summary>
+            <div class="cf-footer-accordion-links">
+              <a href="/">About Us</a>
+              <a href="/">All Partners</a>
+              <a href="/">Careers</a>
+              <a href="/">Privacy Policy</a>
+            </div>
+          </details>
+
+          <details class="cf-footer-accordion-item">
+            <summary>
+              <span>Support</span>
+              <span class="cf-acc-arrow">⌄</span>
+            </summary>
+            <div class="cf-footer-accordion-links">
+              <a href="/">Help Center</a>
+              <a href="/">Blog</a>
+              <a href="/">Affiliates</a>
+              <a href="/">API Docs</a>
+            </div>
+          </details>
+
+          <details class="cf-footer-accordion-item">
+            <summary>
+              <span>Services</span>
+              <span class="cf-acc-arrow">⌄</span>
+            </summary>
+            <div class="cf-footer-accordion-links">
+              <a href="/">Copy Trading</a>
+              <a href="/">Earn</a>
+              <a href="/">Institutional</a>
+              <a href="/">Launchpad</a>
+            </div>
+          </details>
+
+          <details class="cf-footer-accordion-item" open>
+            <summary>
+              <span>Products</span>
+              <span class="cf-acc-arrow">⌄</span>
+            </summary>
+            <div class="cf-footer-accordion-links">
+              <a href="/chart.html?symbol=BTCUSDT">Spot Trading</a>
+              <a href="/chart.html?symbol=BTCUSDT">Futures</a>
+              <a href="/p2p">P2P</a>
+              <a href="/assets">Assets</a>
+            </div>
+          </details>
+        </div>
+
+        <div class="cf-footer-social-grid" aria-label="Social links">
+          <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram">◎</a>
+          <a href="https://reddit.com" target="_blank" rel="noopener noreferrer" aria-label="Reddit">◉</a>
+          <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook">f</a>
+          <a href="https://x.com" target="_blank" rel="noopener noreferrer" aria-label="X">𝕏</a>
+          <a href="https://discord.com" target="_blank" rel="noopener noreferrer" aria-label="Discord">◈</a>
+          <a href="https://medium.com" target="_blank" rel="noopener noreferrer" aria-label="Medium">M</a>
+          <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" aria-label="YouTube">▶</a>
+          <a href="https://tiktok.com" target="_blank" rel="noopener noreferrer" aria-label="TikTok">♪</a>
+          <a href="https://telegram.org" target="_blank" rel="noopener noreferrer" aria-label="Telegram">✈</a>
+          <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">in</a>
+        </div>
+
+        <div class="cf-footer-mobile-meta">
+          <button type="button">🌐 English</button>
+          <button type="button">◉ USD</button>
+          <button type="button">☀ Day Mode</button>
+        </div>
+      </div>
+
+      <div class="cf-footer-cols">
+        <article>
+          <h4>About Bitegit</h4>
+          <a href="/">About Us</a>
+          <a href="/">All Partners</a>
+          <a href="/">Careers</a>
+          <a href="/">Privacy Policy</a>
+        </article>
+        <article>
+          <h4>Products</h4>
+          <a href="/">Buy Crypto</a>
+          <a href="/">Convert</a>
+          <a href="/">Spot</a>
+          <a href="/p2p">P2P</a>
+        </article>
+        <article>
+          <h4>Support</h4>
+          <a href="/">Help Center</a>
+          <a href="/">Blog</a>
+          <a href="/">Affiliates</a>
+          <a href="/">API Docs</a>
+        </article>
+        <article>
+          <h4>Trade</h4>
+          <a href="/chart.html?symbol=BTCUSDT">BTCUSDT</a>
+          <a href="/chart.html?symbol=ETHUSDT">ETHUSDT</a>
+          <a href="/chart.html?symbol=XRPUSDT">XRPUSDT</a>
+          <a href="/chart.html?symbol=BTCUSDT">BTCUSDT-P</a>
+        </article>
+        <article class="cf-footer-qr">
+          <div class="cf-qr"></div>
+          <p>Scan now to download</p>
+        </article>
+      </div>
+      <p class="cf-copyright">&copy; 2026 Bitegit. All rights reserved.</p>
+    </footer>
+
+    <nav class="mobile-app-nav" aria-label="App navigation">
+      <a href="/" class="active" aria-current="page">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></span>
+        <span class="nav-label">Home</span>
+      </a>
+      <a href="/markets.html">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 15h2v5H4v-5zm4-5h2v10H8V10zm4-4h2v14h-2V6zm4 7h2v7h-2v-7z"/></svg></span>
+        <span class="nav-label">Market</span>
+      </a>
+      <a href="/chart.html?symbol=BTCUSDT">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7.5 12a4.5 4.5 0 100-9 4.5 4.5 0 000 9zm9 0a4.5 4.5 0 100-9 4.5 4.5 0 000 9zM7.5 21a4.5 4.5 0 100-9 4.5 4.5 0 000 9zm9 0a4.5 4.5 0 100-9 4.5 4.5 0 000 9z" opacity=".5"/><path d="M7.5 12a4.5 4.5 0 100-9 4.5 4.5 0 000 9zm9-4.5A4.5 4.5 0 117.5 12a4.5 4.5 0 019 0z"/></svg></span>
+        <span class="nav-label">Trade</span>
+      </a>
+      <a href="/chart.html?symbol=BTCUSDT">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="5" width="18" height="14" rx="2" opacity=".3"/><rect x="3" y="5" width="18" height="4" rx="2"/><rect x="6" y="13" width="5" height="2" rx="1"/></svg></span>
+        <span class="nav-label">Futures</span>
+      </a>
+      <a href="/assets">
+        <span class="nav-icon"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="2" y="7" width="20" height="14" rx="2" opacity=".3"/><rect x="2" y="7" width="20" height="5" rx="2"/><circle cx="17" cy="16" r="2.5"/></svg></span>
+        <span class="nav-label">Assets</span>
+      </a>
+    </nav>
+
+    <section id="chartModal" class="bnx-chart-modal hidden" aria-hidden="true">
+      <div id="closeChartBackdrop" class="bnx-chart-backdrop"></div>
+      <div class="bnx-chart-panel">
+        <div class="bnx-chart-head">
+          <div class="bnx-chart-head-meta">
+            <p id="chartModalTitle">BTC/USDT Live Market</p>
+            <span id="orderbookSource">Source: --</span>
+          </div>
+          <button id="closeChartBtn" type="button">Close</button>
+        </div>
+
+        <section class="bnx-order-stats">
+          <article>
+            <span>Last Price</span>
+            <strong id="obLastPrice">--</strong>
+          </article>
+          <article>
+            <span>24h Change</span>
+            <strong id="obChange24h">--</strong>
+          </article>
+          <article>
+            <span>24h High</span>
+            <strong id="obHigh24h">--</strong>
+          </article>
+          <article>
+            <span>24h Low</span>
+            <strong id="obLow24h">--</strong>
+          </article>
+          <article>
+            <span>24h Volume</span>
+            <strong id="obVolume24h">--</strong>
+          </article>
+        </section>
+
+        <section class="bnx-order-grid">
+          <article class="bnx-order-table-card">
+            <h4>Asks (Sell)</h4>
+            <table class="bnx-order-table">
+              <thead>
+                <tr>
+                  <th>Price</th>
+                  <th>Amount</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="obAsksRows"></tbody>
+            </table>
+          </article>
+
+          <article class="bnx-order-table-card">
+            <h4>Bids (Buy)</h4>
+            <table class="bnx-order-table">
+              <thead>
+                <tr>
+                  <th>Price</th>
+                  <th>Amount</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="obBidsRows"></tbody>
+            </table>
+          </article>
+        </section>
+
+        <section class="bnx-trades-card">
+          <h4>Recent Trades</h4>
+          <div class="bnx-trades-wrap">
+            <table class="bnx-order-table bnx-trades-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Price</th>
+                  <th>Amount</th>
+                  <th>Side</th>
+                </tr>
+              </thead>
+              <tbody id="obTradesRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <script src="/script.js?v=20260304e"></script>
+  <script>
+  (function(){
+    var track = document.getElementById('gpPromoTrack');
+    var dots = document.querySelectorAll('#gpPromoDots .gp-dot');
+    if(!track || !dots.length) return;
+    var total = track.children.length;
+    var cur = 0;
+    function goTo(i){
+      cur = (i + total) % total;
+      track.scrollTo({ left: cur * track.offsetWidth, behavior: 'smooth' });
+      dots.forEach(function(d,idx){ d.classList.toggle('active', idx===cur); });
+    }
+    // auto-advance every 4s
+    var timer = setInterval(function(){ goTo(cur+1); }, 4000);
+    // sync dots on manual swipe
+    track.addEventListener('scroll', function(){
+      var idx = Math.round(track.scrollLeft / track.offsetWidth);
+      if(idx !== cur){ cur = idx; dots.forEach(function(d,i){ d.classList.toggle('active',i===cur); }); }
+    });
+    // dot click
+    dots.forEach(function(d,i){ d.addEventListener('click', function(){ clearInterval(timer); goTo(i); timer = setInterval(function(){ goTo(cur+1); },4000); }); });
+  })();
+  </script>
+  </body>
+</html>
