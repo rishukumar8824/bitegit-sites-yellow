@@ -3312,6 +3312,8 @@ function _loadOrdCache() {
   try { return JSON.parse(localStorage.getItem(_ORD_CACHE_KEY) || '[]'); } catch(e){ return []; }
 }
 
+var _ordFetching = false; // in-flight lock — prevents stacked parallel calls
+
 function loadBybitorOrders() {
   function renderAll(allOrders, fromCache) {
     _ordLoaded = true;
@@ -3338,8 +3340,23 @@ function loadBybitorOrders() {
     });
   }
 
+  function showRetry(msg) {
+    _ordLoaded = true;
+    _ordFetching = false;
+    var el = document.getElementById(_ORD_LIST_IDS[_ordSubTab]);
+    if (!el) return;
+    el.style.display = 'block';
+    el.innerHTML =
+      '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:14px;">' +
+      '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
+      '<p style="color:rgba(255,255,255,0.45);font-size:14px;margin:0;text-align:center;">' + (msg || 'Could not load orders') + '</p>' +
+      '<button onclick="_ordFetching=false;loadBybitorOrders();" style="background:#00d4d4;color:#000;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;min-width:120px;">Retry</button>' +
+      '</div>';
+  }
+
   function showLoginPrompt() {
     _ordLoaded = true;
+    _ordFetching = false;
     Object.keys(_ORD_LIST_IDS).forEach(function(sub) {
       var el = document.getElementById(_ORD_LIST_IDS[sub]);
       if (el) el.style.display = 'none';
@@ -3356,12 +3373,27 @@ function loadBybitorOrders() {
     }
   }
 
-  // show cached orders instantly, then refresh in background
+  // helper: fetch with 12-second timeout
+  function fetchOrFail(url, opts) {
+    return new Promise(function(resolve) {
+      var done = false;
+      var timer = setTimeout(function() {
+        if (!done) { done = true; resolve({ ok: false, status: 0, _timedOut: true }); }
+      }, 12000);
+      fetch(url, opts).then(function(r) {
+        if (!done) { done = true; clearTimeout(timer); resolve(r); }
+      }).catch(function() {
+        if (!done) { done = true; clearTimeout(timer); resolve({ ok: false, status: 0 }); }
+      });
+    });
+  }
+
+  // show cached orders instantly
   var cached = _loadOrdCache();
   if (cached.length) {
     renderAll(cached, true);
-  } else {
-    // no cache — show spinner
+  } else if (!_ordFetching) {
+    // no cache and not already fetching — show spinner
     Object.keys(_ORD_LIST_IDS).forEach(function(sub) {
       var el = document.getElementById(_ORD_LIST_IDS[sub]);
       if (el) el.style.display = 'none';
@@ -3370,25 +3402,37 @@ function loadBybitorOrders() {
     if (spinEl) { spinEl.style.display = 'block'; spinEl.innerHTML = _ordLoadingHtml(); }
   }
 
-  // fetch active + history in parallel
-  Promise.all([
-    fetch('/api/p2p/orders/my-active', { credentials: 'include' }).catch(function() { return { ok: false, status: 0 }; }),
-    fetch('/api/p2p/orders/history?limit=100&offset=0', { credentials: 'include' }).catch(function() { return { ok: false, status: 0 }; })
-  ]).then(function(responses) {
-    var r1 = responses[0], r2 = responses[1];
-    if (r1.status === 401) { showLoginPrompt(); return; }
-    return Promise.all([
-      r1.ok ? r1.json().catch(function() { return { orders: [] }; }) : Promise.resolve({ orders: [] }),
-      r2.ok ? r2.json().catch(function() { return { orders: [] }; }) : Promise.resolve({ orders: [] })
-    ]).then(function(results) {
-      var all = (results[0].orders || []).concat(results[1].orders || []);
-      renderAll(all, false);
+  // skip if a fetch is already in flight (prevents stacked requests)
+  if (_ordFetching) return;
+  _ordFetching = true;
+
+  // fetch active orders first (most important), then history
+  fetchOrFail('/api/p2p/orders/my-active', { credentials: 'include' })
+    .then(function(r1) {
+      if (r1.status === 401) { showLoginPrompt(); return; }
+      if (r1._timedOut) { showRetry('Server is starting up… tap Retry'); return; }
+      return (r1.ok ? r1.json().catch(function() { return { orders: [] }; }) : Promise.resolve({ orders: [] }))
+        .then(function(d1) {
+          // Render active orders immediately — don't wait for history
+          renderAll(d1.orders || [], false);
+          _ordFetching = false;
+          // Then fetch history in the background and merge
+          fetchOrFail('/api/p2p/orders/history?limit=50&offset=0', { credentials: 'include' })
+            .then(function(r2) {
+              if (!r2.ok || r2._timedOut) return;
+              return r2.json().catch(function() { return { orders: [] }; });
+            })
+            .then(function(d2) {
+              if (!d2) return;
+              var merged = (d2.orders || []).concat(_ordAllOrders);
+              renderAll(merged, false);
+            })
+            .catch(function() {});
+        });
+    })
+    .catch(function() {
+      showRetry('Could not load orders');
     });
-  }).catch(function(e) {
-    _ordLoaded = true;
-    var el = document.getElementById(_ORD_LIST_IDS[_ordSubTab]);
-    if (el) { el.style.display = 'block'; el.innerHTML = _ordEmpty('No orders'); }
-  });
 }
 // Wire orders screen tab buttons (click + touchend for iOS)
 (function() {
