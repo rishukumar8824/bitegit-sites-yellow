@@ -3429,11 +3429,12 @@ function _setOrdSubPill(activeId, inactiveIds) {
 
 // Show/hide the correct list div and render its content
 function _showOrdList(sub) {
+  // Always show/hide the correct divs first (even before data loaded)
   Object.keys(_ORD_LIST_IDS).forEach(function(k) {
     var el = document.getElementById(_ORD_LIST_IDS[k]);
     if (el) el.style.display = k === sub ? 'block' : 'none';
   });
-  if (!_ordLoaded) return; // loadBybitorOrders will render when done
+  if (!_ordLoaded) return; // loadBybitorOrders will render content when done
   var el = document.getElementById(_ORD_LIST_IDS[sub]);
   if (!el) return;
   var statuses = _ORD_STATUS_MAP[sub] || [];
@@ -3443,8 +3444,10 @@ function _showOrdList(sub) {
   try {
     el.innerHTML = filtered.length ? filtered.map(_ordCard).join('') : _ordEmpty('No orders');
   } catch(e) {
+    console.error('[_showOrdList] _ordCard error sub=' + sub + ':', e);
     el.innerHTML = _ordEmpty('No orders');
   }
+  el.style.display = 'block'; // ensure visible after content set
 }
 
 function switchOrdMain(tab) {
@@ -3522,22 +3525,31 @@ function loadBybitorOrders() {
     allOrders.forEach(function(o) { if (o && o.id) map[o.id] = o; });
     _ordAllOrders = Object.keys(map).map(function(k) { return map[k]; })
       .sort(function(a,b){ return (b.createdAt||0) > (a.createdAt||0) ? 1 : -1; });
+    console.log('[renderAll] total=' + _ordAllOrders.length + ' fromCache=' + fromCache + ' currentSub=' + _ordSubTab);
+    if (_ordAllOrders.length) {
+      console.log('[renderAll] statuses:', _ordAllOrders.map(function(o){ return o.id + ':' + o.status; }).join(', '));
+    }
     if (!fromCache) _saveOrdCache(_ordAllOrders);
 
     Object.keys(_ORD_LIST_IDS).forEach(function(sub) {
       var el = document.getElementById(_ORD_LIST_IDS[sub]);
-      if (!el) return;
+      if (!el) { console.warn('[renderAll] DOM element not found: ' + _ORD_LIST_IDS[sub]); return; }
       var statuses = _ORD_STATUS_MAP[sub] || [];
       var filtered = _ordAllOrders.filter(function(o) {
         return statuses.indexOf((o.status || '').toUpperCase()) !== -1;
       });
+      console.log('[renderAll] sub=' + sub + ' filtered=' + filtered.length + ' statuses=' + JSON.stringify(statuses));
       try {
         el.innerHTML = filtered.length ? filtered.map(_ordCard).join('') : _ordEmpty('No orders');
       } catch(e) {
+        console.error('[renderAll] _ordCard error sub=' + sub + ':', e);
         el.innerHTML = _ordEmpty('No orders');
       }
       el.style.display = sub === _ordSubTab ? 'block' : 'none';
     });
+    // Belt-and-suspenders: ensure the active sub-tab is always visible
+    var activeEl = document.getElementById(_ORD_LIST_IDS[_ordSubTab]);
+    if (activeEl) activeEl.style.display = 'block';
   }
 
   function showRetry(msg) {
@@ -3592,8 +3604,8 @@ function loadBybitorOrders() {
   var cached = _loadOrdCache();
   if (cached.length) {
     renderAll(cached, true);
-  } else if (!_ordFetching) {
-    // no cache and not already fetching — show spinner
+  } else {
+    // no cache — show spinner in current sub-tab
     Object.keys(_ORD_LIST_IDS).forEach(function(sub) {
       var el = document.getElementById(_ORD_LIST_IDS[sub]);
       if (el) el.style.display = 'none';
@@ -3603,7 +3615,7 @@ function loadBybitorOrders() {
   }
 
   // skip if a fetch is already in flight (prevents stacked requests)
-  if (_ordFetching) { console.log('[loadBybitorOrders] skipped — already in flight'); return; }
+  if (_ordFetching) { console.log('[loadBybitorOrders] skipped — already in flight, spinner shown'); return; }
   _ordFetching = true;
   console.log('[loadBybitorOrders] fetching /api/p2p/orders/my-active');
 
@@ -3611,31 +3623,53 @@ function loadBybitorOrders() {
   // Cache-Control: no-store prevents browser from serving stale orders
   fetchOrFail('/api/p2p/orders/my-active', { credentials: 'include', headers: { 'Cache-Control': 'no-store' } })
     .then(function(r1) {
-      console.log('[loadBybitorOrders] my-active response', r1.status, r1._timedOut ? '(timed out)' : '');
+      console.log('[loadBybitorOrders] my-active status=' + r1.status + (r1._timedOut ? ' TIMED_OUT' : '') + ' ok=' + r1.ok);
       if (r1.status === 401) { showLoginPrompt(); return; }
       if (r1._timedOut) { showRetry('Server is starting up… tap Retry'); return; }
       return (r1.ok ? r1.json().catch(function() { return { orders: [] }; }) : Promise.resolve({ orders: [] }))
         .then(function(d1) {
           // Reset lock FIRST — so any render exception never leaves it stuck true
           _ordFetching = false;
+          // Normalize response: handle { orders: [] }, direct array, or { data: [] }
+          var activeOrders = Array.isArray(d1) ? d1 : (Array.isArray(d1.orders) ? d1.orders : []);
+          console.log('[loadBybitorOrders] my-active parsed orders=' + activeOrders.length + ' keys=' + Object.keys(d1||{}).join(','));
+          if (activeOrders.length) {
+            console.log('[loadBybitorOrders] first order:', JSON.stringify(activeOrders[0]).slice(0, 200));
+          }
           // Render active orders immediately — don't wait for history
-          try { renderAll(d1.orders || [], false); } catch(e) {}
+          try {
+            renderAll(activeOrders, false);
+          } catch(e) {
+            console.error('[loadBybitorOrders] renderAll(active) threw:', e);
+            // Ensure spinner is replaced by error state
+            var fallbackEl = document.getElementById(_ORD_LIST_IDS[_ordSubTab]);
+            if (fallbackEl) { fallbackEl.style.display = 'block'; fallbackEl.innerHTML = _ordEmpty('No orders'); }
+          }
           // Then fetch history in the background and merge
           fetchOrFail('/api/p2p/orders/history?limit=50&offset=0', { credentials: 'include', headers: { 'Cache-Control': 'no-store' } })
             .then(function(r2) {
+              console.log('[loadBybitorOrders] history status=' + r2.status + (r2._timedOut ? ' TIMED_OUT' : ''));
               if (!r2.ok || r2._timedOut) return;
               return r2.json().catch(function() { return { orders: [] }; });
             })
             .then(function(d2) {
               if (!d2) return;
-              var merged = (d2.orders || []).concat(_ordAllOrders);
-              try { renderAll(merged, false); } catch(e) {}
+              var histOrders = Array.isArray(d2) ? d2 : (Array.isArray(d2.orders) ? d2.orders : []);
+              console.log('[loadBybitorOrders] history parsed orders=' + histOrders.length);
+              // merge history with already-fetched active orders (dedup handled in renderAll)
+              var merged = histOrders.concat(_ordAllOrders);
+              try {
+                renderAll(merged, false);
+              } catch(e) {
+                console.error('[loadBybitorOrders] renderAll(merged) threw:', e);
+              }
             })
-            .catch(function() {});
+            .catch(function(e) { console.warn('[loadBybitorOrders] history fetch error:', e); });
         });
     })
-    .catch(function() {
+    .catch(function(e) {
       _ordFetching = false; // belt-and-suspenders: ensure lock is freed on any unexpected error
+      console.error('[loadBybitorOrders] outer catch:', e);
       showRetry('Could not load orders');
     });
 }
