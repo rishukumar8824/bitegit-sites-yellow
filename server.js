@@ -1132,29 +1132,31 @@ function clearAdminAuthCookies(res) {
 }
 
 async function getP2PUserFromRequest(req) {
-  if (authMiddleware) {
-    const accessToken = authMiddleware.extractAccessTokenFromRequest(req);
-    if (accessToken) {
-      try {
-        const decoded = tokenService.verifyAccessToken(accessToken);
-        if (String(decoded?.typ || 'access').trim().toLowerCase() === 'access' && String(decoded?.sub || '').trim()) {
-          return {
-            id: String(decoded.sub).trim(),
-            username: String(decoded.username || '').trim(),
-            email: String(decoded.email || '')
-              .trim()
-              .toLowerCase(),
-            role: tokenService.normalizeRole(decoded.role || 'USER'),
-            expiresAt: Date.now() + P2P_USER_TTL_MS
-          };
-        }
-      } catch (error) {
-        // Fall back to legacy session lookup.
+  // ── JWT check — runs ALWAYS, even before DB connects (authMiddleware may be null on cold start) ──
+  const cookies = parseCookies(req);
+  const authHeader = String(req.headers.authorization || '').trim();
+  const jwtToken = (authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '') ||
+    String(cookies[P2P_ACCESS_COOKIE_NAME] || '').trim() ||
+    String(cookies.access_token || '').trim();
+
+  if (jwtToken) {
+    try {
+      const decoded = tokenService.verifyAccessToken(jwtToken);
+      if (String(decoded?.typ || 'access').trim().toLowerCase() === 'access' && String(decoded?.sub || '').trim()) {
+        return {
+          id: String(decoded.sub).trim(),
+          username: String(decoded.username || '').trim(),
+          email: String(decoded.email || '').trim().toLowerCase(),
+          role: tokenService.normalizeRole(decoded.role || 'USER'),
+          expiresAt: Date.now() + P2P_USER_TTL_MS
+        };
       }
+    } catch (_) {
+      // JWT invalid/expired — fall through to legacy session
     }
   }
 
-  const cookies = parseCookies(req);
+  // ── Legacy session fallback (requires DB) ──
   const token = cookies[P2P_USER_COOKIE_NAME];
 
   if (!token) {

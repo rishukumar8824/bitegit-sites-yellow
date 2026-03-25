@@ -1976,7 +1976,7 @@ function closeOrderModal() {
 
 async function loadCurrentUser() {
   try {
-    const response = await fetch('/api/p2p/me');
+    const response = await fetch('/api/p2p/me', { credentials: 'include' });
     const data = await response.json();
     currentUser = data.loggedIn ? data.user : null;
     if (currentUser) {
@@ -1986,6 +1986,29 @@ async function loadCurrentUser() {
     currentUser = null;
   }
   updateUserUi();
+
+  // If not logged in, retry silently after 2.5s — handles Render cold-start race where
+  // the server accepts the connection before authMiddleware/DB is ready.
+  if (!currentUser) {
+    setTimeout(async function() {
+      try {
+        const r = await fetch('/api/p2p/me', { credentials: 'include' });
+        const d = await r.json();
+        if (d.loggedIn && d.user) {
+          currentUser = d.user;
+          updateCurrentUserKyc(currentUser.kyc || {});
+          updateUserUi();
+          // Re-run user-specific loads now that we have a valid session
+          loadMyAds();
+          loadProfilePanel({ refreshWallet: true });
+          _ordFetching = false;
+          loadBybitorOrders();
+          // Re-render offers so "Buy" buttons appear (not "Login")
+          loadOffers();
+        }
+      } catch (_) {}
+    }, 2500);
+  }
 }
 
 async function loginUser() {
@@ -2259,8 +2282,9 @@ async function loadOffers(append) {
 
     if (!Array.isArray(data.offers) || data.offers.length === 0) {
       if (!append) {
-        var cardsEl2 = document.getElementById('offerCards');
-        if (cardsEl2) cardsEl2.innerHTML = '<div class="p2p-empty-state"><p>No ads yet.<br>Be the first to post an ad!</p><button class="p2p-post-ad-cta" onclick="document.querySelector(\'[data-mob=\\\'post\\\']\')?.click()">Post Ad</button></div>';
+        // p2pCards is the real mobile element (offerCards does not exist in HTML)
+        var mobileEmpty = document.getElementById('p2pCards') || document.getElementById('offerCards');
+        if (mobileEmpty) mobileEmpty.innerHTML = '<div class="p2p-empty-state"><p>No ads yet.<br>Be the first to post an ad!</p><button class="p2p-post-ad-cta" onclick="document.querySelector(\'[data-mob=\\\'post\\\']\')?.click()">Post Ad</button></div>';
         if (metaEl) metaEl.textContent = `${currentSide.toUpperCase()} USDT offers: 0`;
       }
       if (loadMoreBtn) loadMoreBtn.style.display = 'none';
@@ -2279,8 +2303,16 @@ async function loadOffers(append) {
     }
   } catch (error) {
     if (!append) {
-      var cardsElErr = document.getElementById('offerCards');
-      if (cardsElErr) cardsElErr.innerHTML = '<div class="p2p-empty-state"><p>No ads yet.<br>Be the first to post an ad!</p><button class="p2p-post-ad-cta" onclick="document.querySelector(\'[data-mob=\\\'post\\\']\')?.click()">Post Ad</button></div>';
+      // Show retry button in the real mobile element (p2pCards)
+      var mobileErr = document.getElementById('p2pCards') || document.getElementById('offerCards');
+      if (mobileErr) {
+        mobileErr.innerHTML =
+          '<div class="p2p-empty-state" style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:40px 20px;">' +
+          '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
+          '<p style="color:rgba(255,255,255,0.45);font-size:14px;margin:0;text-align:center;">Could not load ads</p>' +
+          '<button onclick="loadOffers()" style="background:#00d4d4;color:#000;border:none;border-radius:8px;padding:10px 26px;font-size:14px;font-weight:700;cursor:pointer;">Retry</button>' +
+          '</div>';
+      }
       if (metaEl) metaEl.textContent = '';
     }
     if (loadMoreBtn) { loadMoreBtn.style.display = 'none'; loadMoreBtn.textContent = 'Load More Ads'; }
