@@ -2098,8 +2098,9 @@ async function loginUser() {
     setP2PNavOpen(false);
     // run all post-login loads in parallel — much faster
     Promise.all([loadOffers(), loadLiveOrders(), loadMyAds(), loadProfilePanel({ refreshWallet: true })]);
-    // Pre-fetch orders cache so Orders screen opens instantly after login
-    setTimeout(function() { _ordFetching = false; loadBybitorOrders(); }, 600);
+    // Pre-fetch orders immediately after login so Orders screen opens instantly
+    _ordFetching = false;
+    loadBybitorOrders();
     // Also refresh orders if orders screen is already open
     var ordScreen = document.getElementById('mobOrdersScreen');
     if (ordScreen && ordScreen.style.display !== 'none') {
@@ -2130,8 +2131,7 @@ async function logoutUser() {
     try { localStorage.removeItem('_p2p_hint'); } catch(_) {}
     mobileOrdersCache.clear();
     updateUserUi();
-    await loadOffers();
-    await loadLiveOrders();
+    Promise.all([loadOffers(), loadLiveOrders()]);
     renderMobileOrdersList();
     closeOrderModal();
     closeDealModal();
@@ -3385,7 +3385,15 @@ function _ordCard(order) {
   var rawId = order.id || '';
   var ordId = encodeURIComponent(rawId);
   // store order in localStorage so order-flow page can show instantly
-  try { localStorage.setItem('p2p_order_' + rawId, JSON.stringify(order)); } catch(e){}
+  // only write if status changed to avoid redundant writes on every poll cycle
+  try {
+    var _lsKey = 'p2p_order_' + rawId;
+    var _existing = localStorage.getItem(_lsKey);
+    var _newStatus = order.status || '';
+    if (!_existing || JSON.parse(_existing).status !== _newStatus) {
+      localStorage.setItem(_lsKey, JSON.stringify(order));
+    }
+  } catch(e){}
   var orderUrl = '/p2p-order-flow.html?orderId=' + ordId;
   var chatUrl  = '/p2p-order-flow.html?orderId=' + ordId + '&openChat=1';
   return '<a href="'+orderUrl+'" style="display:block;text-decoration:none;color:inherit;padding:16px;border-bottom:1px solid rgba(255,255,255,0.06);-webkit-tap-highlight-color:rgba(255,255,255,0.04);">'+
@@ -3548,20 +3556,15 @@ function loadBybitorOrders() {
     allOrders.forEach(function(o) { if (o && o.id) map[o.id] = o; });
     _ordAllOrders = Object.keys(map).map(function(k) { return map[k]; })
       .sort(function(a,b){ return (b.createdAt||0) > (a.createdAt||0) ? 1 : -1; });
-    console.log('[renderAll] total=' + _ordAllOrders.length + ' fromCache=' + fromCache + ' currentSub=' + _ordSubTab);
-    if (_ordAllOrders.length) {
-      console.log('[renderAll] statuses:', _ordAllOrders.map(function(o){ return o.id + ':' + o.status; }).join(', '));
-    }
     if (!fromCache) _saveOrdCache(_ordAllOrders);
 
     Object.keys(_ORD_LIST_IDS).forEach(function(sub) {
       var el = document.getElementById(_ORD_LIST_IDS[sub]);
-      if (!el) { console.warn('[renderAll] DOM element not found: ' + _ORD_LIST_IDS[sub]); return; }
+      if (!el) return;
       var statuses = _ORD_STATUS_MAP[sub] || [];
       var filtered = _ordAllOrders.filter(function(o) {
         return statuses.indexOf((o.status || '').toUpperCase()) !== -1;
       });
-      console.log('[renderAll] sub=' + sub + ' filtered=' + filtered.length + ' statuses=' + JSON.stringify(statuses));
       try {
         el.innerHTML = filtered.length ? filtered.map(_ordCard).join('') : _ordEmpty('No orders');
       } catch(e) {
@@ -3608,13 +3611,13 @@ function loadBybitorOrders() {
     }
   }
 
-  // helper: fetch with 12-second timeout
+  // helper: fetch with 5-second timeout — fail fast, show retry instead of 12s skeleton
   function fetchOrFail(url, opts) {
     return new Promise(function(resolve) {
       var done = false;
       var timer = setTimeout(function() {
         if (!done) { done = true; resolve({ ok: false, status: 0, _timedOut: true }); }
-      }, 12000);
+      }, 5000);
       fetch(url, opts).then(function(r) {
         if (!done) { done = true; clearTimeout(timer); resolve(r); }
       }).catch(function() {
@@ -3639,9 +3642,8 @@ function loadBybitorOrders() {
   }
 
   // skip if a fetch is already in flight (prevents stacked requests)
-  if (_ordFetching) { console.log('[loadBybitorOrders] skipped — already in flight, spinner shown'); return; }
+  if (_ordFetching) return;
   _ordFetching = true;
-  console.log('[loadBybitorOrders] fetching orders in parallel');
 
   var _hdr = { credentials: 'include', headers: { 'Cache-Control': 'no-store' } };
   Promise.all([
@@ -3649,13 +3651,11 @@ function loadBybitorOrders() {
     fetchOrFail('/api/p2p/orders/history?limit=50&offset=0', _hdr)
   ]).then(function(results) {
     var r1 = results[0], r2 = results[1];
-    console.log('[loadBybitorOrders] active=' + r1.status + ' history=' + r2.status);
     if (r1.status === 401) { showLoginPrompt(); return; }
     if (r1._timedOut) {
       _ordFetching = false;
       if (_hadCachedData) {
-        // Cache already rendered — don't wipe it. Show tiny "refresh failed" hint and auto-retry.
-        console.log('[loadBybitorOrders] timeout but cache shown — auto-retry in 4s');
+        // Cache already rendered — don't wipe it. Show tiny hint and auto-retry in 4s.
         var _retryHint = document.getElementById('_ordRefreshHint');
         if (!_retryHint) {
           _retryHint = document.createElement('div');
@@ -3678,8 +3678,6 @@ function loadBybitorOrders() {
     if (!r1.ok) {
       _ordFetching = false;
       if (_hadCachedData) {
-        // Keep cached data visible — server error, don't wipe
-        console.log('[loadBybitorOrders] server error ' + r1.status + ' but cache shown');
         setTimeout(function() { if (!_ordFetching) loadBybitorOrders(); }, 5000);
       } else {
         showRetry('Could not load orders (server error ' + r1.status + ')');
@@ -3695,11 +3693,8 @@ function loadBybitorOrders() {
       var d1 = data[0], d2 = data[1];
       var activeOrders = Array.isArray(d1) ? d1 : (d1.orders || d1.data || []);
       var histOrders   = Array.isArray(d2) ? d2 : (d2.orders || d2.data || []);
-      console.log('[loadBybitorOrders] active=' + activeOrders.length + ' history=' + histOrders.length);
-
-      // Merge: history + active, dedup in renderAll
+      // Merge: active takes precedence for dedup; history fills in rest
       var merged = histOrders.concat(activeOrders);
-      // If both empty just render empty
       if (!merged.length) merged = activeOrders;
       try {
         renderAll(merged, false);
@@ -3713,7 +3708,6 @@ function loadBybitorOrders() {
     });
   }).catch(function(e) {
     _ordFetching = false;
-    console.error('[loadBybitorOrders] outer catch:', e);
     showRetry('Could not load orders');
   });
 }
@@ -3755,7 +3749,7 @@ function startOrdPolling() {
     } else {
       stopOrdPolling();
     }
-  }, 1200); // 1.2s — real-time
+  }, 15000); // 15s — SSE handles real-time; polling is a safety-net only
 }
 function stopOrdPolling() {
   if (_ordPollTimer) { clearInterval(_ordPollTimer); _ordPollTimer = null; }
@@ -4285,10 +4279,10 @@ window.addEventListener('pagehide', () => {
   syncMobileTabFromHash();
   syncBodyInteractionState();
 
-  // Always prefetch orders — loadBybitorOrders handles its own auth check
-  // (shows "Login to view orders" if 401). Do NOT gate on currentUser here.
-  console.log('[init] scheduling loadBybitorOrders in 500ms');
-  setTimeout(function() { _ordFetching = false; loadBybitorOrders(); }, 500);
+  // Always prefetch orders immediately — loadBybitorOrders shows cache <1ms and
+  // starts background fetch. Do NOT gate on currentUser here (handles 401 itself).
+  _ordFetching = false;
+  loadBybitorOrders();
 })();
 
 // ── Keep Render free-tier server awake ──────────────────────────────
@@ -4304,7 +4298,7 @@ setInterval(() => {
   if (currentUser && !activeOrderId && liveOrdersMeta) {
     loadLiveOrders();
   }
-}, 1500);
+}, 20000); // 20s — was 1.5s; reduces server hammering; SSE handles real-time
 
 setInterval(loadExchangeTicker, 7000);
 
@@ -4826,10 +4820,9 @@ window.deleteMobAd = async function(offerId) {
       } else if (screenId === 'mobOrdersScreen') {
         history.replaceState(null,'','/p2p#orders');
         _ordLoaded = false; // always fetch fresh when screen opens
-        setTimeout(function() {
-          switchOrdMain('pending');
-          startOrdPolling();
-        }, 50);
+        // Show cache immediately (no delay); startOrdPolling kicks off background refresh
+        switchOrdMain('pending');
+        startOrdPolling();
       }
     }
   }
