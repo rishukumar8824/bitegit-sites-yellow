@@ -3512,7 +3512,7 @@ function switchOrdSub(sub) {
 }
 
 var _ORD_CACHE_KEY = 'p2p_orders_cache';
-var _ORD_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — discard stale cache so new orders always show
+var _ORD_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — show cached orders instantly; background refresh always runs
 function _saveOrdCache(orders) {
   try {
     localStorage.setItem(_ORD_CACHE_KEY, JSON.stringify({ ts: Date.now(), orders: orders }));
@@ -3623,12 +3623,13 @@ function loadBybitorOrders() {
     });
   }
 
-  // show cached orders instantly
+  // show cached orders instantly — user sees real data in <1ms
   var cached = _loadOrdCache();
+  var _hadCachedData = cached.length > 0;
   if (cached.length) {
     renderAll(cached, true);
   } else {
-    // no cache — show spinner in current sub-tab
+    // no cache — show skeleton shimmer in current sub-tab only
     Object.keys(_ORD_LIST_IDS).forEach(function(sub) {
       var el = document.getElementById(_ORD_LIST_IDS[sub]);
       if (el) el.style.display = 'none';
@@ -3650,8 +3651,41 @@ function loadBybitorOrders() {
     var r1 = results[0], r2 = results[1];
     console.log('[loadBybitorOrders] active=' + r1.status + ' history=' + r2.status);
     if (r1.status === 401) { showLoginPrompt(); return; }
-    if (r1._timedOut) { showRetry('Server is starting up… tap Retry'); return; }
-    if (!r1.ok) { showRetry('Could not load orders (server error ' + r1.status + ')'); return; }
+    if (r1._timedOut) {
+      _ordFetching = false;
+      if (_hadCachedData) {
+        // Cache already rendered — don't wipe it. Show tiny "refresh failed" hint and auto-retry.
+        console.log('[loadBybitorOrders] timeout but cache shown — auto-retry in 4s');
+        var _retryHint = document.getElementById('_ordRefreshHint');
+        if (!_retryHint) {
+          _retryHint = document.createElement('div');
+          _retryHint.id = '_ordRefreshHint';
+          _retryHint.style.cssText = 'text-align:center;padding:8px 16px;font-size:12px;color:rgba(255,255,255,0.35);border-bottom:1px solid rgba(255,255,255,0.04);';
+          _retryHint.innerHTML = 'Refreshing orders… <button onclick="document.getElementById(\'_ordRefreshHint\').remove();_ordFetching=false;loadBybitorOrders();" style="background:transparent;border:none;color:#00d4d4;font-size:12px;cursor:pointer;padding:0;">Retry now</button>';
+          var activeList = document.getElementById(_ORD_LIST_IDS[_ordSubTab]);
+          if (activeList) activeList.insertBefore(_retryHint, activeList.firstChild);
+        }
+        setTimeout(function() {
+          var hint = document.getElementById('_ordRefreshHint');
+          if (hint) hint.remove();
+          if (!_ordFetching) loadBybitorOrders();
+        }, 4000);
+      } else {
+        showRetry('Connection slow — tap Retry');
+      }
+      return;
+    }
+    if (!r1.ok) {
+      _ordFetching = false;
+      if (_hadCachedData) {
+        // Keep cached data visible — server error, don't wipe
+        console.log('[loadBybitorOrders] server error ' + r1.status + ' but cache shown');
+        setTimeout(function() { if (!_ordFetching) loadBybitorOrders(); }, 5000);
+      } else {
+        showRetry('Could not load orders (server error ' + r1.status + ')');
+      }
+      return;
+    }
 
     var p1 = r1.json().catch(function() { return { orders: [] }; });
     var p2 = (r2.ok && !r2._timedOut) ? r2.json().catch(function() { return { orders: [] }; }) : Promise.resolve({ orders: [] });
