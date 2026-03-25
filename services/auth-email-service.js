@@ -257,101 +257,113 @@ function createNewDeviceTemplate({ email, loginTimeUtc, ipAddress, userAgent, lo
 }
 
 function createAuthEmailService() {
+  const T = require('./email-templates');
+
   async function sendSignupOtpEmail(email, code, { expiresInMinutes = 10 } = {}) {
-    const subject = `[${BRAND_NAME}] Signup Verification - ${new Date().toISOString().replace('T', ' ').replace('Z', ' (UTC)')}`;
-    const text = `Your ${BRAND_NAME} signup verification code is ${code}. It is valid for ${expiresInMinutes} minutes.`;
-    const html = createOtpTemplate({
-      title: 'Signup Verification',
-      code,
-      expiresInMinutes,
-      note: 'Do not share this code with anyone.'
+    return sendViaProvider({
+      to: email,
+      subject: T.subject('Verification code'),
+      text: `Your ${T.APP_NAME} signup verification code is ${code}. Valid for ${expiresInMinutes} minutes.`,
+      html: T.otpEmail({
+        heading: 'Verify your email',
+        toEmail: email,
+        code,
+        expiresInMinutes,
+        note: "You're signing up for " + T.APP_NAME + ". Enter this code to verify your email address."
+      })
     });
-    return sendViaProvider({ to: email, subject, text, html });
   }
 
   async function sendForgotPasswordOtpEmail(email, code, { expiresInMinutes = 10 } = {}) {
-    const subject = `[${BRAND_NAME}] Password Reset Verification - ${new Date().toISOString().replace('T', ' ').replace('Z', ' (UTC)')}`;
-    const text = `Your ${BRAND_NAME} password reset code is ${code}. It is valid for ${expiresInMinutes} minutes.`;
-    const html = createOtpTemplate({
-      title: 'Password Reset Verification',
-      code,
-      expiresInMinutes,
-      note: 'If you did not request this, secure your account immediately.'
+    return sendViaProvider({
+      to: email,
+      subject: T.subject('Verification code'),
+      text: `Your ${T.APP_NAME} password reset code is ${code}. Valid for ${expiresInMinutes} minutes.`,
+      html: T.otpEmail({
+        heading: 'Reset your password',
+        toEmail: email,
+        code,
+        expiresInMinutes,
+        note: 'You requested a password reset. Use the code above to proceed. If this was not you, secure your account immediately.'
+      })
     });
-    return sendViaProvider({ to: email, subject, text, html });
   }
 
   async function sendLoginOtpEmail(email, code, { expiresInMinutes = 10 } = {}) {
-    const subject = `[${BRAND_NAME}] Login Verification - ${new Date().toISOString().replace('T', ' ').replace('Z', ' (UTC)')}`;
-    const text = `Your ${BRAND_NAME} login verification code is ${code}. It is valid for ${expiresInMinutes} minutes.`;
-    const html = createOtpTemplate({
-      title: 'Login Verification',
-      code,
-      expiresInMinutes,
-      note: 'Never share this code with anyone, including support.'
+    return sendViaProvider({
+      to: email,
+      subject: T.subject('Verification code'),
+      text: `Your ${T.APP_NAME} login verification code is ${code}. Valid for ${expiresInMinutes} minutes.`,
+      html: T.otpEmail({
+        heading: 'Login verification',
+        toEmail: email,
+        code,
+        expiresInMinutes,
+        note: 'A login attempt was made to your account. Never share this code with anyone, including support.'
+      })
     });
-    return sendViaProvider({ to: email, subject, text, html });
   }
 
   async function sendNewDeviceLoginAlert(email, metadata = {}) {
-    const loginTimeUtc = metadata.loginTimeUtc || new Date().toISOString().replace('T', ' ').replace('Z', ' (UTC)');
+    const T2 = require('./email-templates');
+    const loginTimeUtc = metadata.loginTimeUtc || new Date().toISOString().replace('T', ' ').replace('Z', ' UTC');
     const ipAddress = metadata.ipAddress || 'Unknown';
     const userAgent = metadata.userAgent || 'Unknown';
-    const location = metadata.location || 'Unknown';
-    const subject = `[${BRAND_NAME}] New Device or IP Login Alert - ${new Date().toISOString().replace('T', ' ').replace('Z', ' (UTC)')}`;
-    const text = `New login detected.\nEmail: ${email}\nTime: ${loginTimeUtc}\nIP: ${ipAddress}\nDevice: ${userAgent}\nLocation: ${location}`;
-    const html = createNewDeviceTemplate({
-      email,
-      loginTimeUtc,
-      ipAddress,
-      userAgent,
-      location
+    const location  = metadata.location  || 'Unknown';
+    return sendViaProvider({
+      to: email,
+      subject: T2.subject('New device or IP login alert'),
+      text: `New login detected on your ${T2.APP_NAME} account. Time: ${loginTimeUtc} | IP: ${ipAddress}`,
+      html: T2.otpEmail({
+        heading: 'New device login detected',
+        toEmail: email,
+        code: '',
+        expiresInMinutes: 0,
+        note: `We detected a login to your account from a new device or IP.\n\nTime: ${loginTimeUtc}\nDevice: ${userAgent}\nIP: ${ipAddress}\nLocation: ${location}\n\nIf this was not you, reset your password immediately.`
+      })
     });
-    return sendViaProvider({ to: email, subject, text, html });
   }
 
   async function sendDepositSuccessEmail(email, summary = {}) {
-    const amount = Number(summary.amount || 0);
-    const asset = String(summary.asset || 'USDT').toUpperCase();
-    const txId = String(summary.transactionId || 'N/A');
-    const bodyHtml = `
-      <h2 style="margin:0 0 14px;font-size:30px;line-height:1.15;color:#111;">${escapeHtml(asset)} Deposit Successful</h2>
-      <p style="margin:0 0 14px;font-size:16px;line-height:1.6;color:#111;">
-        Your deposit of <strong>${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${escapeHtml(asset)}</strong> is now available.
-      </p>
-      <p style="margin:0;font-size:15px;line-height:1.7;color:#111;"><strong>Transaction ID:</strong> ${escapeHtml(txId)}</p>
-    `;
-    const subject = `[${BRAND_NAME}] ${asset} Deposit Successful`;
-    const text = `${asset} Deposit Successful. Amount: ${amount} ${asset}. TxId: ${txId}`;
-    const html = buildEmailShell({
-      title: `${asset} Deposit Successful`,
-      subtitle: 'Funds credited to your account',
-      bodyHtml
+    const T2 = require('./email-templates');
+    const amount = String(summary.amount || 0);
+    const asset  = String(summary.asset  || 'USDT').toUpperCase();
+    const txTime = summary.txTime || new Date().toISOString().replace('T', ' ').slice(0, 19) + ' (UTC+8)';
+    return sendViaProvider({
+      to: email,
+      subject: T2.subject('Deposit successful'),
+      text: `Deposit successful. ${amount} ${asset} received.`,
+      html: T2.depositSuccessful({ toEmail: email, amount, asset, txTime })
     });
-    return sendViaProvider({ to: email, subject, text, html });
   }
 
   async function sendWithdrawalSuccessEmail(email, summary = {}) {
-    const amount = Number(summary.amount || 0);
-    const asset = String(summary.asset || 'USDT').toUpperCase();
-    const address = String(summary.address || 'N/A');
-    const txId = String(summary.transactionId || 'N/A');
-    const bodyHtml = `
-      <h2 style="margin:0 0 14px;font-size:30px;line-height:1.15;color:#111;">${escapeHtml(asset)} Withdrawal Successful</h2>
-      <p style="margin:0 0 14px;font-size:16px;line-height:1.6;color:#111;">
-        You have withdrawn <strong>${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${escapeHtml(asset)}</strong>.
-      </p>
-      <p style="margin:0;font-size:15px;line-height:1.7;color:#111;"><strong>Address:</strong> ${escapeHtml(address)}</p>
-      <p style="margin:8px 0 0;font-size:15px;line-height:1.7;color:#111;"><strong>Transaction ID:</strong> ${escapeHtml(txId)}</p>
-    `;
-    const subject = `[${BRAND_NAME}] ${asset} Withdrawal Successful`;
-    const text = `${asset} Withdrawal Successful. Amount: ${amount} ${asset}. Address: ${address}. TxId: ${txId}`;
-    const html = buildEmailShell({
-      title: `${asset} Withdrawal Successful`,
-      subtitle: 'Withdrawal request completed',
-      bodyHtml
+    const T2 = require('./email-templates');
+    const amount         = String(summary.amount || 0);
+    const asset          = String(summary.asset  || 'USDT').toUpperCase();
+    const address        = String(summary.address || 'N/A');
+    const txId           = String(summary.transactionId || 'N/A');
+    const withdrawalTime = summary.withdrawalTime || new Date().toISOString().replace('T', ' ').slice(0, 19) + ' (UTC+8)';
+    return sendViaProvider({
+      to: email,
+      subject: T2.subject('Withdrawal successful'),
+      text: `Withdrawal successful. ${amount} ${asset} sent to ${address}.`,
+      html: T2.withdrawalSuccessful({ toEmail: email, amount, asset, withdrawalTime, address, txId })
     });
-    return sendViaProvider({ to: email, subject, text, html });
+  }
+
+  async function sendWithdrawalOtpEmail(email, code, summary = {}) {
+    const T2 = require('./email-templates');
+    const amount         = String(summary.amount || 0);
+    const asset          = String(summary.asset  || 'USDT').toUpperCase();
+    const address        = String(summary.address || 'N/A');
+    const withdrawalTime = summary.withdrawalTime || new Date().toISOString().replace('T', ' ').slice(0, 19) + ' (UTC+8)';
+    return sendViaProvider({
+      to: email,
+      subject: T2.subject('Verification code'),
+      text: `Your ${T2.APP_NAME} withdrawal verification code is ${code}. Valid for 10 minutes.`,
+      html: T2.withdrawalVerificationCode({ toEmail: email, code, withdrawalTime, amount, asset, address })
+    });
   }
 
   return {
@@ -360,7 +372,8 @@ function createAuthEmailService() {
     sendLoginOtpEmail,
     sendNewDeviceLoginAlert,
     sendDepositSuccessEmail,
-    sendWithdrawalSuccessEmail
+    sendWithdrawalSuccessEmail,
+    sendWithdrawalOtpEmail
   };
 }
 
