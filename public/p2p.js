@@ -2327,6 +2327,21 @@ async function createOrder(offerId, options = {}) {
     if (openAfterCreate) {
       openOrder(data.order);
     }
+    // Immediately inject new order into orders screen cache so it shows instantly
+    if (data.order) {
+      var newOrd = data.order;
+      var exists = _ordAllOrders.some(function(o) { return o.id === newOrd.id; });
+      if (!exists) {
+        _ordAllOrders.unshift(newOrd);
+        _ordLoaded = true;
+        _saveOrdCache(_ordAllOrders);
+        // Re-render orders screen if it's open
+        var ordScreen = document.getElementById('mobOrdersScreen');
+        if (ordScreen && ordScreen.style.display !== 'none') {
+          _showOrdList(_ordSubTab);
+        }
+      }
+    }
     await loadLiveOrders();
     return data;
   } catch (error) {
@@ -2839,6 +2854,9 @@ async function loadOrderDetails() {
 }
 
 function openOrder(order) {
+  // Close any previous stream before opening new one
+  if (orderStream) { try { orderStream.close(); } catch(e){} orderStream = null; }
+
   activeOrderId = order.id;
   autoCancelRequested = false;
   messagePollTick = 0;
@@ -2859,6 +2877,11 @@ function openOrder(order) {
       loadOrderDetails();
     }
     loadLiveOrders();
+    // Keep orders screen in sync too
+    var ordScreen = document.getElementById('mobOrdersScreen');
+    if (ordScreen && ordScreen.style.display !== 'none') {
+      loadBybitorOrders();
+    }
   }, 3000);
 
   countdownIntervalId = setInterval(() => {
@@ -2879,18 +2902,30 @@ function openOrder(order) {
 
   orderStream = new EventSource(`/api/p2p/orders/${order.id}/stream`);
   orderStream.addEventListener('order_update', (event) => {
-    const payload = JSON.parse(event.data || '{}');
-    if (payload.order) {
-      updateOrderUi(payload.order);
-    }
+    try {
+      const payload = JSON.parse(event.data || '{}');
+      if (payload.order) {
+        updateOrderUi(payload.order);
+        // Update orders screen cache with latest status
+        if (_ordAllOrders.length) {
+          _ordAllOrders = _ordAllOrders.map(function(o) { return o.id === payload.order.id ? Object.assign({}, o, payload.order) : o; });
+          _saveOrdCache(_ordAllOrders);
+        }
+      }
+    } catch(e) {}
   });
   orderStream.addEventListener('message_update', (event) => {
-    const payload = JSON.parse(event.data || '{}');
-    if (payload.messages) {
-      renderMessages(payload.messages, { smoothScroll: true });
-      chatState.textContent = `Messages: ${payload.messages.length}`;
-    }
+    try {
+      const payload = JSON.parse(event.data || '{}');
+      if (payload.messages) {
+        renderMessages(payload.messages, { smoothScroll: true });
+        chatState.textContent = `Messages: ${payload.messages.length}`;
+      }
+    } catch(e) {}
   });
+  orderStream.onerror = function() {
+    // SSE failed — polling fallback continues, no action needed
+  };
 }
 
 async function openOrderById(orderId) {
@@ -4949,19 +4984,36 @@ window.deleteMobAd = async function(offerId) {
         return;
       }
       if (hint) hint.textContent = '';
-      btn.disabled = true; btn.textContent = 'Creating order...';
+      if (btn._creating) return; // prevent double-submit
+      btn._creating = true;
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+      btn.textContent = 'Placing order...';
+      // Show loading toast
+      var toast = document.createElement('div');
+      toast.id = 'bfToast';
+      toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#00c2b2;color:#000;padding:10px 22px;border-radius:24px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 4px 16px rgba(0,194,178,0.4);';
+      toast.textContent = '⏳ Placing your order...';
+      document.body.appendChild(toast);
       try {
         var data = await createOrder(_bfOffer.id, { amountInr: payAmt, paymentMethod: method, openAfterCreate: false });
         if (!data || !data.order) throw new Error('Order creation failed.');
+        toast.style.background = '#16a34a';
+        toast.textContent = '✓ Order placed!';
+        setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 2000);
         openOrder(data.order);
         var om = document.getElementById('orderModal');
         if (om) { om.classList.add('hidden'); om.setAttribute('aria-hidden','true'); }
         document.body.classList.remove('p2p-order-open');
         bfFillOrder(data.order);
       } catch(e) {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
         if (hint) hint.textContent = e.message || 'Failed to create order.';
       } finally {
-        btn.disabled = false; btn.textContent = 'Buy USDT with 0 fees';
+        btn._creating = false;
+        btn.disabled = false;
+        btn.style.opacity = '';
+        btn.textContent = 'Buy USDT with 0 fees';
       }
     };
 
@@ -5345,10 +5397,17 @@ window.deleteMobAd = async function(offerId) {
   function connectUserStream() {
     if (_userStream) { _userStream.close(); _userStream = null; }
     _userStream = new EventSource('/api/p2p/me/stream', { withCredentials: true });
-    _userStream.addEventListener('new_order', function() {
+    _userStream.addEventListener('new_order', function(e) {
       // New order arrived — refresh immediately
       loadLiveOrders();
+      // Reset loaded flag so orders screen fetches fresh data
+      _ordLoaded = false;
       loadBybitorOrders();
+      // Switch orders screen to pending tab if it's open
+      var ordScreen = document.getElementById('mobOrdersScreen');
+      if (ordScreen && ordScreen.style.display !== 'none') {
+        switchOrdMain('pending');
+      }
     });
     _userStream.onerror = function() {
       // Reconnect after 3s on error
