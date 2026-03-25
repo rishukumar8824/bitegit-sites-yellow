@@ -2018,7 +2018,9 @@ async function loginUser() {
     setP2PNavOpen(false);
     // run all post-login loads in parallel — much faster
     Promise.all([loadOffers(), loadLiveOrders(), loadMyAds(), loadProfilePanel({ refreshWallet: true })]);
-    // Refresh orders if orders screen is open
+    // Pre-fetch orders cache so Orders screen opens instantly after login
+    setTimeout(function() { _ordFetching = false; loadBybitorOrders(); }, 600);
+    // Also refresh orders if orders screen is already open
     var ordScreen = document.getElementById('mobOrdersScreen');
     if (ordScreen && ordScreen.style.display !== 'none') {
       _ordLoaded = false;
@@ -3986,7 +3988,21 @@ window.addEventListener('pagehide', () => {
   await loadExchangeTicker();
   syncMobileTabFromHash();
   syncBodyInteractionState();
+  // Pre-fetch orders silently after all init is done.
+  // So when user taps Orders screen the data is already in cache → instant open.
+  if (currentUser) {
+    setTimeout(function() { loadBybitorOrders(); }, 500);
+  }
 })();
+
+// ── Keep Render free-tier server awake ──────────────────────────────
+// Render sleeps after 15 min idle → causes ~50s cold start next visit.
+// Ping /healthz every 13 min while tab is active to prevent that.
+setInterval(function() {
+  if (document.visibilityState !== 'hidden') {
+    fetch('/healthz').catch(function() {});
+  }
+}, 13 * 60 * 1000);
 
 setInterval(() => {
   if (currentUser && !activeOrderId && liveOrdersMeta) {
