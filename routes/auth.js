@@ -107,22 +107,37 @@ function registerAuthRoutes(app, deps) {
   const REGISTER_EMAIL_VERIFY_PURPOSE = 'register_email_verify';
   const REGISTER_EMAIL_VERIFY_TTL_MS = 5 * 60 * 1000;
 
-  async function safeAuditLog(entry) {
+  function runDetached(task) {
+    Promise.resolve()
+      .then(task)
+      .catch(() => {});
+  }
+
+  function safeAuditLog(entry) {
     if (!auditLogService || typeof auditLogService.safeLog !== 'function') {
       return;
     }
-    await auditLogService.safeLog(entry);
+    runDetached(() => auditLogService.safeLog(entry));
   }
 
-  async function safeOnLoginSuccess(payload) {
+  function safeOnLoginSuccess(payload) {
     if (typeof onLoginSuccess !== 'function') {
       return;
     }
-    try {
-      await onLoginSuccess(payload);
-    } catch (error) {
-      // User-center login history failure should not block auth flow.
+    runDetached(async () => {
+      try {
+        await onLoginSuccess(payload);
+      } catch (error) {
+        // User-center login history failure should not block auth flow.
+      }
+    });
+  }
+
+  async function verifyCredentialPassword(password, storedHash) {
+    if (typeof repos.verifyPasswordAsync === 'function') {
+      return repos.verifyPasswordAsync(password, storedHash);
     }
+    return repos.verifyPassword(password, storedHash);
   }
 
   async function persistRefreshToken(user, refreshToken, expiresAtMs) {
@@ -641,7 +656,11 @@ function registerAuthRoutes(app, deps) {
 
     try {
       const credential = await repos.getP2PCredential(email);
-      if (!credential || !repos.verifyPassword(password, credential.passwordHash)) {
+      const passwordMatches =
+        credential && credential.passwordHash
+          ? await verifyCredentialPassword(password, credential.passwordHash)
+          : false;
+      if (!credential || !passwordMatches) {
         req._recordFailedAttempt?.();
         await safeAuditLog({
           userId: '',
