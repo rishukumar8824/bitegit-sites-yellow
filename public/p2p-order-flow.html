@@ -451,7 +451,7 @@
     </div>
 
     <div class="amount-input-box">
-      <input type="number" value="1000" id="buyAmount" />
+      <input type="number" placeholder="Enter amount" id="buyAmount" />
       <div class="inr-max">
         <span class="inr-label" id="currencyLabel">INR</span>
         <span class="max-btn" id="maxBtn">Max</span>
@@ -1220,7 +1220,7 @@
     document.getElementById('chatBackBtn').addEventListener('click', goBackFromChat);
     document.getElementById('chatPayBtn').addEventListener('click', function() { showScreen('screen-transfer'); });
     document.getElementById('chatPayBtn').addEventListener('touchend', function(e) { e.preventDefault(); showScreen('screen-transfer'); });
-    var _doReleaseLocked = mkDebounce(withLock(doRelease));
+    var _doReleaseLocked = mkDebounce(doRelease);
     document.getElementById('chatReleaseBtn').addEventListener('click', _doReleaseLocked);
     document.getElementById('chatReleaseBtn').addEventListener('touchend', function(e) { e.preventDefault(); _doReleaseLocked(); });
     document.getElementById('chatSendBtn').addEventListener('click', sendMsg);
@@ -1247,7 +1247,7 @@
       if (cancelSource === 'transfer') showScreen('screen-transfer'); else showScreen('screen-order-generated');
     });
     document.getElementById('chatWithSellerBtn').addEventListener('click', function() { openChat('screen-before-cancel'); });
-    var _doProceedCancel = mkDebounce(function() { showScreen('screen-cancel-reason'); });
+    var _doProceedCancel = mkDebounce(function() { buildReasonList(); showScreen('screen-cancel-reason'); });
     document.getElementById('proceedCancelBtn').addEventListener('click', _doProceedCancel);
     document.getElementById('proceedCancelBtn').addEventListener('touchend', function(e) { e.preventDefault(); _doProceedCancel(); });
 
@@ -1435,13 +1435,13 @@
     if (tab === 'fiat') {
       setText('currencyLabel', 'INR');
       setText('limitText', '₹' + fmtInr(minFiat) + ' - ₹' + fmtInr(maxFiat));
-      document.getElementById('buyAmount').value = minFiat;
+      document.getElementById('buyAmount').value = '';
     } else {
       var minC = (minFiat / price).toFixed(2);
       var maxC = (maxFiat / price).toFixed(2);
       setText('currencyLabel', 'USDT');
       setText('limitText', 'Limit ' + minC + ' - ' + maxC + ' USDT');
-      document.getElementById('buyAmount').value = minC;
+      document.getElementById('buyAmount').value = '';
     }
     calcEquiv();
   }
