@@ -3914,16 +3914,21 @@ async function boot() {
   }
 }
 
+// ── Always export so require('./server') works from any file ──────────────
+module.exports = { app, boot };
+
 // ── Entry-point guard ──────────────────────────────────────────────────────
-// boot() must run ONLY when this file is the direct entry point (node server.js).
-// If server.js is require()'d by another file (e.g. index.js), boot() must NOT
-// run again — that would cause two app.listen() calls → EADDRINUSE on port 10000.
+// boot() must run ONLY when server.js is the DIRECT entry point.
+//   node server.js          → require.main === module → TRUE  → boot() called here
+//   require('./server')     → require.main === module → FALSE → boot() NOT called here
+//                                                               caller calls it explicitly
+//
+// This prevents the duplicate app.listen(PORT) that causes EADDRINUSE:
+//   Without this guard: index.js does require('./server') which executes boot()
+//   AND node server.js also executes boot() → two listeners on the same port.
 if (require.main === module) {
   boot().catch((err) => {
     console.error('[boot] Unhandled startup error:', err?.message || err);
     process.exit(1);
   });
-} else {
-  // Exported for programmatic use (e.g. tests, index.js wrapper)
-  module.exports = { app, boot };
 }
