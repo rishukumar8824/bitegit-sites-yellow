@@ -3466,8 +3466,8 @@ function _ordCard(order) {
       localStorage.setItem(_lsKey, JSON.stringify(order));
     }
   } catch(e){}
-  var orderUrl = '/p2p-order-flow.html?orderId=' + ordId;
-  var chatUrl  = '/p2p-order-flow.html?orderId=' + ordId + '&openChat=1';
+  var orderUrl = '/p2p-order-flow.html?orderId=' + ordId + '&source=orders';
+  var chatUrl  = '/p2p-order-flow.html?orderId=' + ordId + '&source=orders&openChat=1';
   var status = String(order.status || '').toUpperCase();
   var isEnded = ['RELEASED','COMPLETED','CANCELLED','CANCELED','EXPIRED'].indexOf(status) !== -1;
   var chatBtn = '<a href="'+chatUrl+'" onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:5px 12px;color:rgba(255,255,255,0.8);font-size:12px;text-decoration:none;-webkit-tap-highlight-color:rgba(240,185,11,0.15);">'+
@@ -5938,7 +5938,7 @@ window.deleteMobAd = async function(offerId) {
   }
   window.fillDealModal = function(offer) {
     if (offer && offer.id) {
-      _navSafe('/p2p-order-flow.html?adId=' + encodeURIComponent(offer.id));
+      _navSafe('/p2p-order-flow.html?adId=' + encodeURIComponent(offer.id) + '&source=ad');
     }
   };
   window._p2pNavSafe = _navSafe; // expose for openOrder override below
@@ -5951,7 +5951,7 @@ window.deleteMobAd = async function(offerId) {
   var _origOpenOrder = openOrder;
   openOrder = function(order) {
     if (order && order.id) {
-      _navSafe('/p2p-order-flow.html?orderId=' + encodeURIComponent(order.id));
+      _navSafe('/p2p-order-flow.html?orderId=' + encodeURIComponent(order.id) + '&source=orders');
       return;
     }
     _origOpenOrder.call(this, order);
@@ -5960,7 +5960,7 @@ window.deleteMobAd = async function(offerId) {
   var _origOpenOrderById = openOrderById;
   openOrderById = async function(orderId) {
     if (orderId) {
-      _navSafe('/p2p-order-flow.html?orderId=' + encodeURIComponent(orderId));
+      _navSafe('/p2p-order-flow.html?orderId=' + encodeURIComponent(orderId) + '&source=orders');
       return;
     }
     return _origOpenOrderById.call(this, orderId);
