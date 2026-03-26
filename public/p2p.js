@@ -3636,13 +3636,13 @@ function loadBybitorOrders() {
     }
   }
 
-  // helper: fetch with 30s timeout (Render.com cold start takes up to 60s)
+  // helper: fetch with 8s timeout — server is kept warm by keepalive ping
   function fetchOrFail(url, opts) {
     return new Promise(function(resolve) {
       var done = false;
       var timer = setTimeout(function() {
         if (!done) { done = true; resolve({ ok: false, status: 0, _timedOut: true }); }
-      }, 30000);
+      }, 8000);
       fetch(url, opts).then(function(r) {
         if (!done) { done = true; clearTimeout(timer); resolve(r); }
       }).catch(function() {
@@ -3701,9 +3701,10 @@ function loadBybitorOrders() {
       var retryN = loadBybitorOrders._retryCount;
       console.log('[loadBybitorOrders] server not ready (' + (r._timedOut ? 'timeout' : '503') + '), retry #' + retryN);
       if (retryN === 1) _showWakingHint(); // show "waking up" after 1st attempt
-      if (retryN <= 5) {
-        // keep skeleton and retry with growing delay
-        var delay = Math.min(retryN * 4000, 20000);
+      if (retryN <= 10) {
+        // Retry quickly — server wakes fast once ping hits it
+        // Delays: 1s, 2s, 3s, 4s, 5s … (max 5s) instead of 4/8/12/16/20s
+        var delay = Math.min(retryN * 1000, 5000);
         setTimeout(function() { if (!_ordFetching) loadBybitorOrders(); }, delay);
       } else {
         loadBybitorOrders._retryCount = 0;
@@ -5828,6 +5829,12 @@ window.deleteMobAd = async function(offerId) {
   function connectUserStream() {
     if (_userStream) { _userStream.close(); _userStream = null; }
     _userStream = new EventSource('/api/p2p/me/stream', { withCredentials: true });
+    _userStream.addEventListener('connected', function() {
+      // SSE (re)connected — server just woke up, refresh orders right away
+      _ordFetching = false;
+      _ordLoaded = false;
+      loadBybitorOrders();
+    });
     _userStream.addEventListener('new_order', function(e) {
       // New order arrived — force fresh fetch immediately
       loadLiveOrders();
@@ -5863,4 +5870,24 @@ window.deleteMobAd = async function(offerId) {
 
   // Also connect right after login
   document.addEventListener('p2p:login', function() { if (currentUser) connectUserStream(); });
+})();
+
+// ── Render free-tier keepalive ────────────────────────────────────────────────
+// Render sleeps free-tier servers after 15 min idle. One ping every 14 min
+// keeps it awake — eliminating the 30-90s cold start that causes 2-min delays.
+(function() {
+  function _pingServer() {
+    fetch('/api/p2p/ping', { method: 'GET', credentials: 'include', cache: 'no-store' })
+      .catch(function() {}); // fire-and-forget
+  }
+  // Ping on page load to wake any sleeping server immediately
+  _pingServer();
+  // Ping every 14 min to prevent Render from sleeping
+  setInterval(_pingServer, 14 * 60 * 1000);
+  // Ping on tab focus — user returning after idle tab means server may have slept
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) _pingServer();
+  });
+  // Also ping when network comes back online
+  window.addEventListener('online', _pingServer);
 })();
