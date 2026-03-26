@@ -1152,6 +1152,49 @@ async function issueAuthTokenPairForUser(user) {
   return tokenPair;
 }
 
+function runDetached(task) {
+  Promise.resolve()
+    .then(task)
+    .catch(() => {});
+}
+
+function safeP2PAuditLog(entry) {
+  if (!auditLogService || typeof auditLogService.safeLog !== 'function') {
+    return;
+  }
+  runDetached(() => auditLogService.safeLog(entry));
+}
+
+async function verifyP2PPassword(password, storedHash) {
+  if (typeof repos.verifyPasswordAsync === 'function') {
+    return repos.verifyPasswordAsync(password, storedHash);
+  }
+  return repos.verifyPassword(password, storedHash);
+}
+
+async function hashP2PPassword(password) {
+  if (typeof repos.hashPasswordAsync === 'function') {
+    return repos.hashPasswordAsync(password);
+  }
+  return repos.hashPassword(password);
+}
+
+async function getP2PKycProfileFast(email, timeoutMs = 250) {
+  const fallback = buildP2PKycProfileFromCredential();
+  try {
+    const profilePromise = Promise.resolve().then(() => getP2PKycProfileByEmail(email));
+    profilePromise.catch(() => {});
+    return await Promise.race([
+      profilePromise,
+      new Promise((resolve) => {
+        setTimeout(() => resolve(fallback), timeoutMs);
+      })
+    ]);
+  } catch (error) {
+    return fallback;
+  }
+}
+
 function setP2PAuthCookies(res, tokenPair) {
   setCookie(res, P2P_ACCESS_COOKIE_NAME, tokenPair.accessToken, tokenService.ACCESS_TOKEN_TTL_SECONDS);
   setCookie(res, P2P_REFRESH_COOKIE_NAME, tokenPair.refreshToken, tokenService.REFRESH_TOKEN_TTL_SECONDS);
@@ -1403,14 +1446,12 @@ app.post('/api/p2p/login', async (req, res) => {
   const requestIp = getRequestIp(req);
   const ipCheck = loginAttemptLimiter(`p2p_login:${getRequestIp(req)}`);
   if (!ipCheck.allowed) {
-    if (auditLogService) {
-      await auditLogService.safeLog({
-        userId: '',
-        action: 'login_failed',
-        ipAddress: requestIp,
-        metadata: { reason: 'rate_limited', route: '/api/p2p/login' }
-      });
-    }
+    safeP2PAuditLog({
+      userId: '',
+      action: 'login_failed',
+      ipAddress: requestIp,
+      metadata: { reason: 'rate_limited', route: '/api/p2p/login' }
+    });
     res.setHeader('Retry-After', String(ipCheck.retryAfterSeconds));
     return res.status(429).json({
       message: 'Too many login attempts. Please try again later.',
@@ -1424,45 +1465,43 @@ app.post('/api/p2p/login', async (req, res) => {
   const password = String(req.body.password || '').trim();
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    if (auditLogService) {
-      await auditLogService.safeLog({
-        userId: '',
-        action: 'login_failed',
-        ipAddress: requestIp,
-        metadata: { reason: 'invalid_email', route: '/api/p2p/login', email }
-      });
-    }
+    safeP2PAuditLog({
+      userId: '',
+      action: 'login_failed',
+      ipAddress: requestIp,
+      metadata: { reason: 'invalid_email', route: '/api/p2p/login', email }
+    });
     return res.status(400).json({ message: 'Enter a valid email address.' });
   }
   if (password.length < 6) {
-    if (auditLogService) {
-      await auditLogService.safeLog({
-        userId: '',
-        action: 'login_failed',
-        ipAddress: requestIp,
-        metadata: { reason: 'invalid_password_length', route: '/api/p2p/login', email }
-      });
-    }
+    safeP2PAuditLog({
+      userId: '',
+      action: 'login_failed',
+      ipAddress: requestIp,
+      metadata: { reason: 'invalid_password_length', route: '/api/p2p/login', email }
+    });
     return res.status(400).json({ message: 'Password must be at least 6 characters.' });
   }
 
   try {
     const existingCredential = await repos.getP2PCredential(email);
-    if (existingCredential && !repos.verifyPassword(password, existingCredential.passwordHash)) {
-      if (auditLogService) {
-        await auditLogService.safeLog({
-          userId: '',
-          action: 'login_failed',
-          ipAddress: requestIp,
-          metadata: { reason: 'invalid_credentials', route: '/api/p2p/login', email }
-        });
-      }
+    const passwordMatches =
+      existingCredential && existingCredential.passwordHash
+        ? await verifyP2PPassword(password, existingCredential.passwordHash)
+        : false;
+    if (existingCredential && !passwordMatches) {
+      safeP2PAuditLog({
+        userId: '',
+        action: 'login_failed',
+        ipAddress: requestIp,
+        metadata: { reason: 'invalid_credentials', route: '/api/p2p/login', email }
+      });
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
     let userRole = tokenService.normalizeRole(existingCredential?.role || 'USER');
     if (!existingCredential) {
-      const hash = repos.hashPassword(password);
+      const hash = await hashP2PPassword(password);
       await repos.setP2PCredential(email, hash, {
         role: 'USER'
       });
@@ -1471,23 +1510,21 @@ app.post('/api/p2p/login', async (req, res) => {
 
     const { token, user } = await createP2PUserSession(email, userRole);
     const tokenPair = await issueAuthTokenPairForUser(user);
-    await walletService.ensureWallet(user.id, { username: user.username });
     setCookie(res, P2P_USER_COOKIE_NAME, token, P2P_USER_TTL_MS / 1000);
     setP2PAuthCookies(res, tokenPair);
-    if (auditLogService) {
-      await auditLogService.safeLog({
-        userId: user.id,
-        action: 'login_success',
-        ipAddress: requestIp,
-        metadata: {
-          route: '/api/p2p/login',
-          email: user.email,
-          role: user.role
-        }
-      });
-    }
+    runDetached(() => walletService.ensureWallet(user.id, { username: user.username }));
+    safeP2PAuditLog({
+      userId: user.id,
+      action: 'login_success',
+      ipAddress: requestIp,
+      metadata: {
+        route: '/api/p2p/login',
+        email: user.email,
+        role: user.role
+      }
+    });
 
-    const kycProfile = await getP2PKycProfileByEmail(user.email);
+    const kycProfile = await getP2PKycProfileFast(user.email);
 
     return res.json({
       message: 'P2P login successful.',
@@ -1503,18 +1540,16 @@ app.post('/api/p2p/login', async (req, res) => {
     });
   } catch (error) {
     clearP2PAuthCookies(res);
-    if (auditLogService) {
-      await auditLogService.safeLog({
-        userId: '',
-        action: 'login_failed',
-        ipAddress: requestIp,
-        metadata: {
-          reason: 'server_error',
-          route: '/api/p2p/login',
-          email
-        }
-      });
-    }
+    safeP2PAuditLog({
+      userId: '',
+      action: 'login_failed',
+      ipAddress: requestIp,
+      metadata: {
+        reason: 'server_error',
+        route: '/api/p2p/login',
+        email
+      }
+    });
     if (String(error.message || '').includes('JWT_SECRET')) {
       return res.status(503).json({ message: 'JWT auth is not configured.' });
     }
