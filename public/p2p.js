@@ -2006,6 +2006,7 @@ async function loadCurrentUser() {
       if (hintUser && hintUser.id) {
         currentUser = hintUser;
         updateUserUi(); // show logged-in UI immediately, no waiting
+        fetchOrdersSafe(); // start loading orders from cache/network immediately — don't wait for /me
       }
     }
   } catch(_) {}
@@ -3767,7 +3768,7 @@ function _startFallbackPoll() {
   if (_ordPollTimer) return; // already running
   _ordPollTimer = setInterval(function() {
     if (currentUser && !_ordAbort) fetchOrdersSafe();
-  }, 15000);
+  }, 3000);
 }
 function _stopFallbackPoll() {
   if (_ordPollTimer) { clearInterval(_ordPollTimer); _ordPollTimer = null; }
@@ -5880,6 +5881,86 @@ window.deleteMobAd = async function(offerId) {
   };
 
   document.addEventListener('p2p:login', function() { if (currentUser) connectUserStream(); });
+})();
+
+// ── WebSocket real-time order push ────────────────────────────────────────────
+// Connects to /ws/p2p after login. Receives new_order and order_updated events
+// pushed directly from the server — zero-latency, no polling needed.
+(function() {
+  var _ws = null;
+  var _wsRetryTimer = null;
+  var _wsActive = false;
+
+  function connectWs() {
+    if (_ws && (_ws.readyState === WebSocket.OPEN || _ws.readyState === WebSocket.CONNECTING)) return;
+    if (!currentUser) return;
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    try {
+      _ws = new WebSocket(proto + '//' + location.host + '/ws/p2p');
+    } catch(e) { return; }
+
+    _ws.onopen = function() {
+      _wsActive = true;
+      // WS connected — stop fallback poll; SSE+WS handle real-time
+      _stopFallbackPoll();
+    };
+
+    _ws.onmessage = function(evt) {
+      try {
+        var msg = JSON.parse(evt.data || '{}');
+        var event = msg.event;
+        var data  = msg.data || {};
+        if (event === 'new_order') {
+          loadLiveOrders();
+          fetchOrdersSafe();
+          var ordScreen = document.getElementById('mobOrdersScreen');
+          if (ordScreen && ordScreen.style.display !== 'none') switchOrdMain('pending');
+        } else if (event === 'order_updated') {
+          if (data.orderId && data.status) {
+            try {
+              var lsKey = 'p2p_order_' + data.orderId;
+              var raw = localStorage.getItem(lsKey);
+              if (raw) {
+                var obj = JSON.parse(raw);
+                obj.status = data.status;
+                localStorage.setItem(lsKey, JSON.stringify(obj));
+              }
+            } catch(_) {}
+          }
+          fetchOrdersSafe();
+        }
+      } catch(_) {}
+    };
+
+    _ws.onerror = function() { /* handled by onclose */ };
+
+    _ws.onclose = function() {
+      _ws = null;
+      _wsActive = false;
+      // WS dropped — start fallback poll and retry WS after 4s
+      _startFallbackPoll();
+      if (currentUser) {
+        clearTimeout(_wsRetryTimer);
+        _wsRetryTimer = setTimeout(connectWs, 4000);
+      }
+    };
+  }
+
+  function disconnectWs() {
+    clearTimeout(_wsRetryTimer);
+    if (_ws) { try { _ws.close(); } catch(_) {} _ws = null; }
+    _wsActive = false;
+  }
+
+  // Hook into loadCurrentUser — connect WS after session confirmed
+  var _origLcu = loadCurrentUser;
+  loadCurrentUser = async function() {
+    await _origLcu.apply(this, arguments);
+    if (currentUser) { connectWs(); } else { disconnectWs(); }
+  };
+
+  document.addEventListener('p2p:login',  function() { if (currentUser) connectWs(); });
+  document.addEventListener('p2p:logout', function() { disconnectWs(); });
 })();
 
 // ── Render free-tier keepalive ────────────────────────────────────────────────

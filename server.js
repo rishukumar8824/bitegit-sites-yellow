@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const { WebSocketServer } = require('ws');
 const crypto = require('crypto');
 const { localFaceMatch } = require('./services/local-face-match');
 const express = require('express');
@@ -88,11 +89,27 @@ function getUserStreams(userId) {
   if (!p2pUserStreams.has(userId)) p2pUserStreams.set(userId, new Set());
   return p2pUserStreams.get(userId);
 }
+// Per-user WebSocket clients: userId → Set of WebSocket objects
+const p2pWsClients = new Map();
+function getWsClients(userId) {
+  if (!p2pWsClients.has(userId)) p2pWsClients.set(userId, new Set());
+  return p2pWsClients.get(userId);
+}
 function broadcastUserEvent(userId, eventName, payload) {
+  // SSE push
   const streams = p2pUserStreams.get(userId);
-  if (!streams || streams.size === 0) return;
-  const data = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
-  for (const stream of streams) stream.write(data);
+  if (streams && streams.size > 0) {
+    const sseData = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+    for (const stream of streams) stream.write(sseData);
+  }
+  // WebSocket push
+  const wsClients = p2pWsClients.get(userId);
+  if (wsClients && wsClients.size > 0) {
+    const wsMsg = JSON.stringify({ event: eventName, data: payload });
+    for (const ws of wsClients) {
+      if (ws.readyState === 1 /* OPEN */) ws.send(wsMsg);
+    }
+  }
 }
 const DEFAULT_TICKER_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT'];
 const DEFAULT_SYMBOL_PRICES = {
@@ -2859,7 +2876,7 @@ app.get('/api/p2p/orders', requiresP2PUser, async (req, res) => {
     const offset = Math.max(Number(req.query.offset || 0), 0);
     const result = await repos.listP2POrderHistory(userId, { limit, offset });
     const orders = result.orders.map((o) => normalizeOrderState(o));
-    return res.json({ orders, total: result.total, hasMore: result.hasMore });
+    return res.json({ success: true, orders, total: result.total, hasMore: result.hasMore });
   } catch (error) {
     console.error('[GET /api/p2p/orders] error:', error.message);
     return res.status(500).json({ message: 'Server error fetching orders.', orders: [] });
@@ -3523,6 +3540,18 @@ async function boot() {
     await new Promise((resolve, reject) => {
       httpServer = app.listen(PORT, '0.0.0.0', () => {
         console.log(`[boot] Server started — PID ${process.pid} on port ${PORT}`);
+        // Attach WebSocket server for real-time order push
+        const wss = new WebSocketServer({ server: httpServer, path: '/ws/p2p' });
+        wss.on('connection', async (ws, req) => {
+          const user = await getP2PUserFromRequest(req).catch(() => null);
+          if (!user) { ws.close(4401, 'Unauthorized'); return; }
+          const uid = String(user.id);
+          const clients = getWsClients(uid);
+          clients.add(ws);
+          ws.send(JSON.stringify({ event: 'connected', data: { userId: uid } }));
+          ws.on('close', () => clients.delete(ws));
+          ws.on('error', () => clients.delete(ws));
+        });
         resolve();
       });
       httpServer.once('error', (err) => {
