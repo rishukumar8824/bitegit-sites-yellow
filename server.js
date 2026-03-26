@@ -183,7 +183,7 @@ let socialFeedService = null;
 let persistenceReady = false;
 let httpServer = null;
 let shuttingDown = false;
-let bootRetryTimer = null;
+// bootRetryTimer removed — no retry logic, boot() runs exactly once
 let p2pExpirySweepTimer = null;
 const socialFeedBootstrapConfig = readSocialFeedConfig();
 const socialFeedBootstrapStore = createSocialFeedFallbackStore();
@@ -3439,11 +3439,6 @@ function registerShutdownHandlers() {
       shuttingDown = true;
       console.log(`${signal} received, shutting down HTTP server...`);
 
-      if (bootRetryTimer) {
-        clearTimeout(bootRetryTimer);
-        bootRetryTimer = null;
-      }
-
       if (p2pExpirySweepTimer) {
         clearInterval(p2pExpirySweepTimer);
         p2pExpirySweepTimer = null;
@@ -3515,26 +3510,32 @@ function registerShutdownHandlers() {
   });
 }
 
+let _bootStarted = false; // hard once-only guard — second call is a no-op
+
 async function boot() {
+  if (_bootStarted) {
+    console.warn('[boot] boot() called more than once — ignoring duplicate call');
+    return;
+  }
+  _bootStarted = true;
+
   try {
-    if (!httpServer) {
-      await new Promise((resolve, reject) => {
-        httpServer = app.listen(PORT, '0.0.0.0', () => {
-          console.log(`[boot] Server started — PID ${process.pid} listening on port ${PORT}`);
-          resolve();
-        });
-        httpServer.once('error', (err) => {
-          httpServer = null; // reset so retry guard doesn't block future attempts
-          if (err.code === 'EADDRINUSE') {
-            console.error(`[boot] FATAL: Port ${PORT} is already in use by another process.`);
-            console.error(`[boot] Fix: kill the existing process with:  lsof -ti:${PORT} | xargs kill -9`);
-            process.exit(1); // hard exit — do NOT retry, another instance is already up
-          }
-          reject(err);
-        });
+    await new Promise((resolve, reject) => {
+      httpServer = app.listen(PORT, '0.0.0.0', () => {
+        console.log(`[boot] Server started — PID ${process.pid} on port ${PORT}`);
+        resolve();
       });
-      registerShutdownHandlers();
-    }
+      httpServer.once('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          console.error(`[boot] FATAL: port ${PORT} already in use — another instance is running`);
+          console.error(`[boot] Kill it:  lsof -ti:${PORT} | xargs kill -9`);
+        } else {
+          console.error(`[boot] Listen error: ${err.message}`);
+        }
+        process.exit(1); // never retry — exit and let the process manager handle it
+      });
+    });
+    registerShutdownHandlers();
 
     validateStartupConfig();
     tokenService.ensureJwtSecret();
@@ -3894,23 +3895,9 @@ async function boot() {
     persistenceReady = true;
     console.log(`MongoDB connected to ${mongoConfig.dbName}`);
   } catch (error) {
-    console.error('Failed to start server:', error.message);
-    if (!IS_PRODUCTION && error.stack) {
-      console.error(error.stack);
-    }
-
-    if (!persistenceReady && !bootRetryTimer) {
-      bootRetryTimer = setTimeout(() => {
-        bootRetryTimer = null;
-        boot().catch((bootError) => {
-          console.error('Boot retry failed:', bootError?.message || bootError);
-        });
-      }, 15000);
-      if (typeof bootRetryTimer.unref === 'function') {
-        bootRetryTimer.unref();
-      }
-      console.log('Will retry startup in 15 seconds...');
-    }
+    console.error('[boot] Fatal startup error:', error.message);
+    if (error.stack) console.error(error.stack);
+    process.exit(1); // no retry — fail fast, let the process manager restart if needed
   }
 }
 
