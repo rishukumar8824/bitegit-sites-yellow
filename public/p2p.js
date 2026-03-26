@@ -2015,6 +2015,11 @@ async function loadCurrentUser() {
     const response = await fetch('/api/p2p/me', { credentials: 'include' });
     const data = await response.json();
     if (data.loggedIn && data.user) {
+      // If server returned a different user than the cached hint, wipe stale order cache
+      var _prevId = currentUser && currentUser.id;
+      if (_prevId && _prevId !== data.user.id) {
+        _clearOrdersCache();
+      }
       currentUser = data.user;
       updateCurrentUserKyc(currentUser.kyc || {});
       // Refresh hint with latest server data
@@ -2022,6 +2027,7 @@ async function loadCurrentUser() {
     } else {
       currentUser = null;
       try { localStorage.removeItem('_p2p_hint'); } catch(_) {} // session expired — clear hint
+      _clearOrdersCache(); // clear order cache when session ends
     }
   } catch (error) {
     // Network/parse error — keep optimistic hint state, schedule retry
@@ -2089,6 +2095,13 @@ async function loginUser() {
       throw new Error(data.message || 'Login failed.');
     }
 
+    // Check if a different user was previously logged in — if so, wipe their order cache
+    var prevHint = null;
+    try { prevHint = JSON.parse(localStorage.getItem('_p2p_hint') || 'null'); } catch(_) {}
+    if (!prevHint || prevHint.id !== data.user.id) {
+      _clearOrdersCache(); // different user — clear stale orders cache immediately
+    }
+
     currentUser = data.user;
     updateCurrentUserKyc(currentUser?.kyc || {});
     // Persist a session hint so refresh shows logged-in UI instantly (no flicker)
@@ -2124,12 +2137,29 @@ async function loginUser() {
   }
 }
 
+function _clearOrdersCache() {
+  try { localStorage.removeItem('p2p_orders_cache'); } catch(_) {}
+  // Also wipe any individual order cache keys
+  try {
+    var toRemove = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.startsWith('p2p_order_')) toRemove.push(k);
+    }
+    toRemove.forEach(function(k) { localStorage.removeItem(k); });
+  } catch(_) {}
+  _ordAllOrders = [];
+  _ordLoaded = false;
+  _ordFetching = false;
+}
+
 async function logoutUser() {
   try {
     await fetch('/api/p2p/logout', { method: 'POST' });
   } finally {
     currentUser = null;
     try { localStorage.removeItem('_p2p_hint'); } catch(_) {}
+    _clearOrdersCache(); // clear previous user's order cache
     mobileOrdersCache.clear();
     updateUserUi();
     Promise.all([loadOffers(), loadLiveOrders()]);
