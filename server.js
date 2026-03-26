@@ -1293,6 +1293,7 @@ function normalizeOrderState(order) {
     buyerUsername: order.buyerUsername,
     fiatAmount: order.fiatAmount || order.amountInr,
     cryptoAmount: order.cryptoAmount || order.assetAmount,
+    assetAmount: order.assetAmount || order.cryptoAmount,
     escrowAmount: order.escrowAmount,
     isParticipant: true,
     createdAt: new Date(order.createdAt).toISOString(),

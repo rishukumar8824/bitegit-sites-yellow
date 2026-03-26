@@ -3716,7 +3716,7 @@ function fetchOrdersSafe() {
   // 8-second timeout wrapper
   var timeoutId;
   var timeoutP = new Promise(function(_, reject) {
-    timeoutId = setTimeout(function() { reject(new Error('timeout')); }, 8000);
+    timeoutId = setTimeout(function() { reject(new Error('timeout')); }, 15000);
   });
 
   Promise.race([
