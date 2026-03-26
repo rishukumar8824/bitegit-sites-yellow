@@ -2136,6 +2136,10 @@ function _clearOrdersCache() {
     try { _ordAbort.abort(); } catch(_) {}
     _ordAbort = null;
   }
+  if (typeof _ordHistoryAbort !== 'undefined' && _ordHistoryAbort) {
+    try { _ordHistoryAbort.abort(); } catch(_) {}
+    _ordHistoryAbort = null;
+  }
   if (typeof _ordPollTimer !== 'undefined' && _ordPollTimer) {
     clearInterval(_ordPollTimer); _ordPollTimer = null;
   }
@@ -3613,6 +3617,7 @@ function switchOrdSub(sub) {
 // ── state ──────────────────────────────────────────────────────────────────
 var _ordReqId     = 0;      // incremented each call; stale responses are discarded
 var _ordAbort     = null;   // AbortController for the in-flight request
+var _ordHistoryAbort = null; // background history request controller
 var _ordFailing   = 0;      // consecutive failure count (reset on success / user change)
 var _ordPollTimer = null;   // single fallback-poll timer (only when SSE is down)
 var _ordFetching  = false;  // legacy compat flag — mirrors !!_ordAbort
@@ -3669,6 +3674,70 @@ function _ordRenderAll(allOrders, fromCache) {
   var activeEl = document.getElementById(_ORD_LIST_IDS[_ordSubTab]);
   if (activeEl) activeEl.style.display = 'block';
 }
+
+function _ordMergeById(primaryOrders, secondaryOrders) {
+  var map = {};
+  [].concat(primaryOrders || [], secondaryOrders || []).forEach(function(order) {
+    if (!order || !order.id) return;
+    map[order.id] = Object.assign({}, map[order.id] || {}, order);
+  });
+  return Object.keys(map).map(function(id) { return map[id]; });
+}
+
+function _ordEndedOrders(orders) {
+  return (Array.isArray(orders) ? orders : []).filter(function(order) {
+    var status = String(order && order.status || '').toUpperCase();
+    return ['RELEASED', 'COMPLETED', 'CANCELLED', 'CANCELED', 'EXPIRED'].indexOf(status) !== -1;
+  });
+}
+
+function _ordFetchWithTimeout(url, fetchOpts, timeoutMs) {
+  var timeoutId;
+  var timeoutPromise = new Promise(function(_, reject) {
+    timeoutId = setTimeout(function() { reject(new Error('timeout')); }, timeoutMs || 15000);
+  });
+  return Promise.race([fetch(url, fetchOpts), timeoutPromise]).then(
+    function(result) {
+      clearTimeout(timeoutId);
+      return result;
+    },
+    function(error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  );
+}
+
+function _fetchOrderHistoryInBackground(parentReqId) {
+  if (!currentUser || !currentUser.id) return;
+  if (_ordHistoryAbort) { try { _ordHistoryAbort.abort(); } catch(_) {} }
+
+  var historyCtrl = window.AbortController ? new AbortController() : null;
+  _ordHistoryAbort = historyCtrl;
+  var historyFetchOpts = { credentials: 'include', headers: { 'Cache-Control': 'no-store' } };
+  if (historyCtrl) historyFetchOpts.signal = historyCtrl.signal;
+
+  _ordFetchWithTimeout('/api/p2p/orders/history?limit=50&offset=0', historyFetchOpts, 20000)
+    .then(function(response) {
+      if (parentReqId !== _ordReqId) return null;
+      if (!response || !response.ok) return null;
+      return response.json().catch(function() { return null; });
+    })
+    .then(function(data) {
+      if (!data || parentReqId !== _ordReqId) return;
+      var historyOrders = Array.isArray(data) ? data : (data.orders || []);
+      _ordRenderAll(_ordMergeById(_ordAllOrders, historyOrders), false);
+    })
+    .catch(function(error) {
+      if (error && error.name === 'AbortError') return;
+    })
+    .finally(function() {
+      if (_ordHistoryAbort === historyCtrl) {
+        _ordHistoryAbort = null;
+      }
+    });
+}
+
 function _ordShowSkeleton() {
   Object.keys(_ORD_LIST_IDS).forEach(function(sub) {
     var el = document.getElementById(_ORD_LIST_IDS[sub]);
@@ -3723,6 +3792,7 @@ function fetchOrdersSafe() {
 
   // Abort any in-flight request — prevents stale responses from overwriting fresh data
   if (_ordAbort) { try { _ordAbort.abort(); } catch(_) {} }
+  if (_ordHistoryAbort) { try { _ordHistoryAbort.abort(); } catch(_) {} }
   var ctrl = window.AbortController ? new AbortController() : null;
   _ordAbort    = ctrl;
   _ordFetching = true;
@@ -3731,18 +3801,8 @@ function fetchOrdersSafe() {
   var fetchOpts = { credentials: 'include', headers: { 'Cache-Control': 'no-store' } };
   if (ctrl) fetchOpts.signal = ctrl.signal;
 
-  // 8-second timeout wrapper
-  var timeoutId;
-  var timeoutP = new Promise(function(_, reject) {
-    timeoutId = setTimeout(function() { reject(new Error('timeout')); }, 15000);
-  });
-
-  Promise.race([
-    fetch('/api/p2p/orders?limit=50', fetchOpts),
-    timeoutP
-  ])
+  _ordFetchWithTimeout('/api/p2p/orders/my-active', fetchOpts, 15000)
   .then(function(r) {
-    clearTimeout(timeoutId);
     if (myReqId !== _ordReqId) return null; // stale — newer request already running
     _ordAbort    = null;
     _ordFetching = false;
@@ -3763,11 +3823,12 @@ function fetchOrdersSafe() {
   .then(function(data) {
     if (!data) return;
     if (myReqId !== _ordReqId) return; // race check after json parse
-    var orders = Array.isArray(data) ? data : (data.orders || data.data || []);
-    _ordRenderAll(orders, false);
+    var activeOrders = Array.isArray(data) ? data : (data.orders || data.data || []);
+    var endedFromCache = _ordEndedOrders(_ordAllOrders);
+    _ordRenderAll(_ordMergeById(activeOrders, endedFromCache), false);
+    _fetchOrderHistoryInBackground(myReqId);
   })
   .catch(function(e) {
-    clearTimeout(timeoutId);
     if (e && e.name === 'AbortError') return; // intentionally cancelled — ignore
     if (myReqId !== _ordReqId) return;
     _ordAbort    = null;
