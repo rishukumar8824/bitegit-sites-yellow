@@ -2015,17 +2015,19 @@ async function loadCurrentUser() {
     const response = await fetch('/api/p2p/me', { credentials: 'include' });
     const data = await response.json();
     if (data.loggedIn && data.user) {
-      // If server returned a different user than what was in hint, wipe stale order cache
+      // If a DIFFERENT user was confirmed by server, wipe all stale state immediately
       var _prevId = currentUser && currentUser.id;
-      var _userChanged = _prevId && _prevId !== data.user.id;
-      if (_userChanged) _clearOrdersCache();
+      if (_prevId !== data.user.id) {
+        // Different user (or first load) — wipe cache + in-memory orders completely
+        _clearOrdersCache(); // clears localStorage cache + _ordAllOrders + _ordLoaded
+      }
       currentUser = data.user;
       updateCurrentUserKyc(currentUser.kyc || {});
       try { localStorage.setItem('_p2p_hint', JSON.stringify({ id: currentUser.id, username: currentUser.username, email: currentUser.email, role: currentUser.role })); } catch(_) {}
-      // Always trigger orders load after we confirm user identity from server
-      // This covers: page refresh with no hint, user change, network retry on wake
+      // Trigger orders load — shows cache instantly (if same user) or skeleton (new user)
       _ordFetching = false;
       loadBybitorOrders();
+      startBgOrdPolling(); // background 15s poll to keep orders fresh at all times
     } else {
       currentUser = null;
       try { localStorage.removeItem('_p2p_hint'); } catch(_) {}
@@ -2097,12 +2099,9 @@ async function loginUser() {
       throw new Error(data.message || 'Login failed.');
     }
 
-    // Check if a different user was previously logged in — if so, wipe their order cache
-    var prevHint = null;
-    try { prevHint = JSON.parse(localStorage.getItem('_p2p_hint') || 'null'); } catch(_) {}
-    if (!prevHint || prevHint.id !== data.user.id) {
-      _clearOrdersCache(); // different user — clear stale orders cache immediately
-    }
+    // Always wipe cache on login — ensures no stale orders from any previous session
+    // (same-user re-login is fast anyway since server returns fresh data within 3s)
+    _clearOrdersCache(); // clears localStorage cache + _ordAllOrders + _ordLoaded
 
     currentUser = data.user;
     updateCurrentUserKyc(currentUser?.kyc || {});
@@ -2113,16 +2112,10 @@ async function loginUser() {
     setP2PNavOpen(false);
     // run all post-login loads in parallel — much faster
     Promise.all([loadOffers(), loadLiveOrders(), loadMyAds(), loadProfilePanel({ refreshWallet: true })]);
-    // Pre-fetch orders immediately after login so Orders screen opens instantly
+    // Start polling immediately after login — fetches orders right away + every 3s
     _ordFetching = false;
-    loadBybitorOrders();
-    startOrdPolling(); // start background polling right after login
-    // Also refresh orders if orders screen is already open
-    var ordScreen = document.getElementById('mobOrdersScreen');
-    if (ordScreen && ordScreen.style.display !== 'none') {
-      _ordLoaded = false;
-      loadBybitorOrders();
-    }
+    startOrdPolling();
+    startBgOrdPolling(); // also start 15s background poll for when screen is closed
 
     const redirectPath = getPostLoginRedirectPath();
     if (redirectPath) {
@@ -2161,7 +2154,9 @@ async function logoutUser() {
   } finally {
     currentUser = null;
     try { localStorage.removeItem('_p2p_hint'); } catch(_) {}
-    _clearOrdersCache(); // clear previous user's order cache
+    _clearOrdersCache();
+    stopOrdPolling();
+    stopBgOrdPolling();
     mobileOrdersCache.clear();
     updateUserUi();
     Promise.all([loadOffers(), loadLiveOrders()]);
@@ -3839,17 +3834,29 @@ function loadBybitorOrders() {
   wireOrdBtn('ordSubCanceled',   function() { switchOrdSub('canceled'); });
 })();
 
-// Auto-refresh orders while the orders screen is visible
+// Order polling — fast (3s) when orders screen is open, slow (15s) always in background
 var _ordPollTimer = null;
+var _ordBgPollTimer = null; // background poll — always running when logged in
 function startOrdPolling() {
   stopOrdPolling();
   loadBybitorOrders(); // immediate fetch
   _ordPollTimer = setInterval(function() {
-    loadBybitorOrders(); // always poll — orders refresh whether screen is open or not
-  }, 3000); // 3s — fast polling so new orders + expiry appear quickly
+    loadBybitorOrders();
+  }, 3000); // 3s fast poll when orders screen is open
 }
 function stopOrdPolling() {
   if (_ordPollTimer) { clearInterval(_ordPollTimer); _ordPollTimer = null; }
+}
+function startBgOrdPolling() {
+  if (_ordBgPollTimer) return; // already running
+  _ordBgPollTimer = setInterval(function() {
+    if (!_ordPollTimer && currentUser) { // only if fast poll not already running
+      loadBybitorOrders();
+    }
+  }, 15000); // 15s background poll — keeps orders fresh even when screen is closed
+}
+function stopBgOrdPolling() {
+  if (_ordBgPollTimer) { clearInterval(_ordBgPollTimer); _ordBgPollTimer = null; }
 }
 // ===== END BYBIT-STYLE ORDERS SCREEN =====
 
@@ -4375,11 +4382,8 @@ window.addEventListener('pagehide', () => {
 
   syncMobileTabFromHash();
   syncBodyInteractionState();
-
-  // Always prefetch orders immediately — loadBybitorOrders shows cache <1ms and
-  // starts background fetch. Do NOT gate on currentUser here (handles 401 itself).
-  _ordFetching = false;
-  loadBybitorOrders();
+  // loadCurrentUser() above already called loadBybitorOrders() for logged-in users.
+  // For non-logged-in users, showLoginPrompt is shown when they open the orders screen.
 })();
 
 // ── Keep Render free-tier server awake ──────────────────────────────
