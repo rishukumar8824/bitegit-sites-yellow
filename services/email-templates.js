@@ -1,6 +1,6 @@
 /**
- * Bitegit Email Templates — Pixel-match to Bitget style
- * Each template has a unique from-address label via subject prefix.
+ * Bitegit Email Templates — Pixel-match to Binance style
+ * Black header · Teal brand · Gold CTA button · Full social footer
  */
 
 const APP_NAME   = String(process.env.APP_NAME   || 'Bitegit').trim();
@@ -8,119 +8,166 @@ const APP_DOMAIN = String(process.env.APP_DOMAIN || 'bitegit.com').trim();
 const SUPPORT    = `support@${APP_DOMAIN}`;
 const YEAR       = new Date().getUTCFullYear();
 
-// ─── Logo SVG (Bitget-style teal circle + letter) ─────────────────────────
+const GOLD  = '#F0B90B';
+const TEAL  = '#00c2b2';
+const BLACK = '#1E2026';
+const TEXT  = '#333333';
+const MUTED = '#666666';
+
+// ─── Binance-style diamond logo (teal) ────────────────────────────────────
 const LOGO_HTML = `
-<table cellpadding="0" cellspacing="0" border="0">
+<table cellpadding="0" cellspacing="0" border="0" align="center">
   <tr>
-    <td style="vertical-align:middle;padding-right:8px;">
-      <div style="width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,#00c2b2,#00a89a);
-                  display:flex;align-items:center;justify-content:center;text-align:center;
-                  font-size:18px;font-weight:900;color:#fff;line-height:34px;">
-        &#9651;
-      </div>
+    <td align="center" valign="middle" style="padding-right:10px;">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="15,3 27,15 15,27 3,15" fill="${TEAL}"/>
+        <polygon points="15,9 21,15 15,21 9,15" fill="${BLACK}"/>
+      </svg>
     </td>
-    <td style="vertical-align:middle;">
-      <span style="font-size:20px;font-weight:800;color:#1a1a1a;letter-spacing:-0.3px;">${APP_NAME}</span>
+    <td align="center" valign="middle">
+      <span style="font-size:22px;font-weight:900;color:${TEAL};letter-spacing:1.5px;font-family:Arial,sans-serif;">
+        ${APP_NAME.toUpperCase()}
+      </span>
     </td>
   </tr>
 </table>`;
 
-// ─── Shared Footer (same in every email) ──────────────────────────────────
+function esc(v) {
+  return String(v || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Gold CTA button ───────────────────────────────────────────────────────
+function ctaButton(label, url) {
+  return `
+  <table cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
+    <tr>
+      <td align="left">
+        <a href="${url}" style="display:inline-block;background:${GOLD};color:#000000;
+           font-size:16px;font-weight:700;text-decoration:none;padding:14px 32px;
+           border-radius:4px;font-family:Arial,sans-serif;letter-spacing:0.2px;">
+          ${label}
+        </a>
+      </td>
+    </tr>
+  </table>`;
+}
+
+// ─── Standard footer (Binance exact match) ────────────────────────────────
 function buildFooter(antiPhishingCode) {
   return `
-  <!-- Divider -->
-  <tr><td style="padding:0 28px;"><div style="height:1px;background:#e8eaed;margin:8px 0;"></div></td></tr>
-
-  <!-- Help Section -->
-  <tr><td style="padding:14px 28px 4px;">
-    <p style="margin:0;font-size:13px;color:#555;line-height:1.7;">Any question or in need of help?</p>
-    <p style="margin:4px 0 0;font-size:13px;color:#555;line-height:1.7;">
-      You can refer to <a href="https://${APP_DOMAIN}/support" style="color:#00c2b2;text-decoration:none;">Help center</a>
-      or send email <a href="mailto:${SUPPORT}" style="color:#00c2b2;text-decoration:none;">${SUPPORT}</a> to contact us
-    </p>
-    <p style="margin:4px 0 0;font-size:13px;color:#555;line-height:1.7;">
-      Follow our <a href="https://twitter.com" style="color:#00c2b2;text-decoration:none;">X(Twitter)</a>
-      for more <span style="color:#f0b90b;font-weight:700;">${APP_NAME}</span> updates.
-    </p>
-    <p style="margin:8px 0 0;font-size:12px;color:#888;">* This email is sent automatically and you do not need to reply.</p>
+  <!-- Gold divider -->
+  <tr><td style="padding:0 0 0 0;">
+    <div style="height:1px;background:${GOLD};margin:8px 0 0 0;"></div>
   </td></tr>
 
-  <!-- Anti-Phishing Code -->
-  <tr><td style="padding:14px 28px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="100%">
+  <!-- Stay connected -->
+  <tr><td style="padding:24px 32px 8px;text-align:center;">
+    <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:${GOLD};font-family:Arial,sans-serif;">
+      Stay connected!
+    </p>
+    <!-- Social icons row -->
+    <table cellpadding="0" cellspacing="0" border="0" align="center">
       <tr>
-        <td style="border-left:3px solid #f0b90b;padding:4px 10px;">
-          <span style="font-size:13px;font-weight:700;color:#1a1a1a;">Anti-Phishing Code : </span>
-          <span style="font-size:13px;color:#555;">${antiPhishingCode || ''}</span>
+        <td style="padding:0 6px;">
+          <a href="https://twitter.com" style="display:inline-block;width:36px;height:36px;border-radius:50%;
+             border:1px solid #CCCCCC;text-align:center;line-height:36px;font-size:14px;font-weight:700;
+             color:#333;text-decoration:none;font-family:Arial,sans-serif;">X</a>
+        </td>
+        <td style="padding:0 6px;">
+          <a href="https://t.me" style="display:inline-block;width:36px;height:36px;border-radius:50%;
+             border:1px solid #CCCCCC;text-align:center;line-height:36px;font-size:14px;
+             color:#333;text-decoration:none;font-family:Arial,sans-serif;">✈</a>
+        </td>
+        <td style="padding:0 6px;">
+          <a href="https://facebook.com" style="display:inline-block;width:36px;height:36px;border-radius:50%;
+             border:1px solid #CCCCCC;text-align:center;line-height:36px;font-size:14px;font-weight:700;
+             color:#333;text-decoration:none;font-family:Arial,sans-serif;">f</a>
+        </td>
+        <td style="padding:0 6px;">
+          <a href="https://linkedin.com" style="display:inline-block;width:36px;height:36px;border-radius:50%;
+             border:1px solid #CCCCCC;text-align:center;line-height:36px;font-size:13px;font-weight:700;
+             color:#333;text-decoration:none;font-family:Arial,sans-serif;">in</a>
+        </td>
+        <td style="padding:0 6px;">
+          <a href="https://youtube.com" style="display:inline-block;width:36px;height:36px;border-radius:50%;
+             border:1px solid #CCCCCC;text-align:center;line-height:36px;font-size:14px;
+             color:#333;text-decoration:none;font-family:Arial,sans-serif;">▶</a>
+        </td>
+        <td style="padding:0 6px;">
+          <a href="https://reddit.com" style="display:inline-block;width:36px;height:36px;border-radius:50%;
+             border:1px solid #CCCCCC;text-align:center;line-height:36px;font-size:11px;font-weight:700;
+             color:#333;text-decoration:none;font-family:Arial,sans-serif;">rdt</a>
+        </td>
+        <td style="padding:0 6px;">
+          <a href="https://instagram.com" style="display:inline-block;width:36px;height:36px;border-radius:50%;
+             border:1px solid #CCCCCC;text-align:center;line-height:36px;font-size:14px;
+             color:#333;text-decoration:none;font-family:Arial,sans-serif;">&#128247;</a>
         </td>
       </tr>
     </table>
   </td></tr>
 
-  <!-- Download App -->
-  <tr><td style="padding:4px 28px 16px;">
-    <p style="margin:0 0 10px;font-size:13px;color:#555;">
-      Download the <span style="color:#f0b90b;font-weight:700;">${APP_NAME}</span> App now<br/>
-      <span style="font-size:12px;color:#888;">Stay updated on the go!</span>
+  <!-- Anti-phishing -->
+  <tr><td style="padding:16px 32px 8px;">
+    <p style="margin:0;font-size:14px;color:${TEXT};font-family:Arial,sans-serif;line-height:1.6;">
+      To stay secure, setup your anti-phishing code
+      <a href="https://${APP_DOMAIN}/settings/security" style="color:${TEAL};text-decoration:none;">here</a>${antiPhishingCode ? `&nbsp;&nbsp;<strong style="color:${BLACK};">Code: ${esc(antiPhishingCode)}</strong>` : ''}.
     </p>
-    <table cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="padding-right:10px;">
-          <a href="https://play.google.com" style="display:inline-block;background:#000;border-radius:8px;padding:8px 16px;text-decoration:none;">
-            <table cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td style="padding-right:6px;vertical-align:middle;font-size:16px;color:#fff;">&#9658;</td>
-                <td style="vertical-align:middle;">
-                  <div style="font-size:9px;color:#ccc;line-height:1.2;">GET IT ON</div>
-                  <div style="font-size:13px;color:#fff;font-weight:600;line-height:1.2;">Google Play</div>
-                </td>
-              </tr>
-            </table>
-          </a>
-        </td>
-        <td>
-          <a href="https://apps.apple.com" style="display:inline-block;background:#000;border-radius:8px;padding:8px 16px;text-decoration:none;">
-            <table cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td style="padding-right:6px;vertical-align:middle;font-size:16px;color:#fff;">&#63743;</td>
-                <td style="vertical-align:middle;">
-                  <div style="font-size:9px;color:#ccc;line-height:1.2;">Download on the</div>
-                  <div style="font-size:13px;color:#fff;font-weight:600;line-height:1.2;">App Store</div>
-                </td>
-              </tr>
-            </table>
-          </a>
-        </td>
-      </tr>
-    </table>
   </td></tr>
 
-  <!-- Divider -->
-  <tr><td style="padding:0 28px;"><div style="height:1px;background:#e8eaed;"></div></td></tr>
-
-  <!-- Social Icons -->
-  <tr><td style="padding:12px 28px;text-align:center;">
-    <a href="#" style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0f0f0;margin:0 3px;line-height:28px;text-align:center;font-size:12px;color:#555;text-decoration:none;">t</a>
-    <a href="#" style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0f0f0;margin:0 3px;line-height:28px;text-align:center;font-size:12px;color:#555;text-decoration:none;">T</a>
-    <a href="#" style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0f0f0;margin:0 3px;line-height:28px;text-align:center;font-size:12px;color:#555;text-decoration:none;">f</a>
-    <a href="#" style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0f0f0;margin:0 3px;line-height:28px;text-align:center;font-size:12px;color:#555;text-decoration:none;">X</a>
-    <a href="#" style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0f0f0;margin:0 3px;line-height:28px;text-align:center;font-size:12px;color:#555;text-decoration:none;">Y</a>
-    <a href="#" style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0f0f0;margin:0 3px;line-height:28px;text-align:center;font-size:12px;color:#555;text-decoration:none;">&#9679;</a>
-    <a href="#" style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0f0f0;margin:0 3px;line-height:28px;text-align:center;font-size:12px;color:#555;text-decoration:none;">in</a>
+  <!-- Disclaimer -->
+  <tr><td style="padding:12px 32px 8px;">
+    <p style="margin:0 0 10px;font-size:13px;color:${TEXT};font-family:Arial,sans-serif;line-height:1.7;">
+      <strong>Disclaimer:</strong> Digital asset prices are subject to high market risk and
+      price volatility. The value of your investment may go down or up, and you may not get
+      back the amount invested. You are solely responsible for your investment decisions and
+      ${esc(APP_NAME)} is not liable for any losses you may incur. Past performance is not a
+      reliable predictor of future performance. You should only invest in products you are
+      familiar with and where you understand the risks. You should carefully consider your
+      investment experience, financial situation, investment objectives and risk tolerance and
+      consult an independent financial adviser prior to making any investment. This material
+      should not be construed as financial advice. For more information, see our
+      <a href="https://${APP_DOMAIN}/terms" style="color:${TEAL};text-decoration:none;">Terms of Use</a>
+      and
+      <a href="https://${APP_DOMAIN}/risk" style="color:${TEAL};text-decoration:none;">Risk Warning</a>.
+    </p>
+    <p style="margin:0 0 10px;font-size:13px;color:${TEXT};font-family:Arial,sans-serif;line-height:1.7;">
+      <strong>Kindly note:</strong> Please be aware of phishing sites and always make sure you
+      are visiting the official ${esc(APP_DOMAIN)} website when entering sensitive data.
+    </p>
+    <p style="margin:0 0 10px;font-size:13px;color:${TEXT};font-family:Arial,sans-serif;line-height:1.7;">
+      ${esc(APP_DOMAIN)} services are provided under applicable laws and regulations. For more
+      information, please see our
+      <a href="https://${APP_DOMAIN}/privacy" style="color:${TEAL};text-decoration:none;">Privacy Policy</a>.
+    </p>
   </td></tr>
 
-  <!-- Privacy Note -->
-  <tr><td style="padding:8px 28px 16px;">
-    <p style="margin:0;font-size:11px;color:#999;line-height:1.6;">
-      Note: Online support and staff of <span style="color:#f0b90b;font-weight:600;">${APP_NAME}</span> will never require your
-      account' private information in any mail or communication and social tools, so please do not
-      reveal your account information to anyone. Please contact us via above methods if you
-      encounter any suspicious situation.
+  <!-- Copyright -->
+  <tr><td style="padding:12px 32px 28px;text-align:center;">
+    <p style="margin:0;font-size:13px;color:${MUTED};font-family:Arial,sans-serif;">
+      &copy; ${YEAR} ${esc(APP_DOMAIN)}, All Rights Reserved.
     </p>
-    <p style="margin:8px 0 0;font-size:11px;color:#bbb;">&copy;2018-${YEAR} ${APP_DOMAIN} reserves all rights.</p>
   </td></tr>
 `;
 }
+
+// ─── Security / did-not-do-this line ──────────────────────────────────────
+const SECURITY_LINE = `
+  <p style="margin:16px 0;font-size:15px;color:${TEXT};font-family:Arial,sans-serif;line-height:1.6;">
+    Don't recognize this activity? Please
+    <a href="https://${APP_DOMAIN}/reset-password" style="color:${TEAL};text-decoration:none;">reset your password</a>
+    and contact
+    <a href="https://${APP_DOMAIN}/support" style="color:${TEAL};text-decoration:none;">customer support</a>
+    immediately.
+  </p>`;
+
+const AUTO_MSG = `
+  <p style="margin:16px 0 0;font-size:15px;color:${TEXT};font-style:italic;
+     font-family:Arial,sans-serif;line-height:1.6;">
+    This is an automated message, please do not reply.
+  </p>`;
 
 // ─── Master shell ──────────────────────────────────────────────────────────
 function buildShell(contentRows, antiPhishingCode) {
@@ -130,20 +177,20 @@ function buildShell(contentRows, antiPhishingCode) {
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
 </head>
-<body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 12px;">
+<body style="margin:0;padding:0;background:#F5F5F5;font-family:Arial,Helvetica,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#F5F5F5;padding:20px 0;">
   <tr><td align="center">
     <table width="600" cellpadding="0" cellspacing="0"
-      style="max-width:600px;width:100%;background:#fff;border-radius:4px;border:1px solid #e5e7eb;overflow:hidden;">
+      style="max-width:600px;width:100%;background:#FFFFFF;border-radius:4px;overflow:hidden;">
 
-      <!-- LOGO HEADER -->
+      <!-- BLACK HEADER with teal BITEGIT logo -->
       <tr>
-        <td style="padding:20px 28px;background:#fff;border-bottom:2px solid #00c2b2;">
+        <td style="background:${BLACK};padding:20px 32px;text-align:center;">
           ${LOGO_HTML}
         </td>
       </tr>
 
-      <!-- CONTENT -->
+      <!-- MAIN CONTENT -->
       ${contentRows}
 
       <!-- FOOTER -->
@@ -156,211 +203,231 @@ function buildShell(contentRows, antiPhishingCode) {
 </html>`;
 }
 
-function esc(v) {
-  return String(v || '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function detailBox(rows) {
-  const rowsHtml = rows.map(([label, value, isLink]) =>
-    `<tr>
-      <td style="padding:7px 14px;font-size:13px;color:#888;white-space:nowrap;border-right:1px solid #f0f0f0;">${esc(label)}</td>
-      <td style="padding:7px 14px;font-size:13px;color:${isLink ? '#00c2b2' : '#1a1a1a'};word-break:break-all;">${isLink ? value : esc(value)}</td>
-    </tr>`
-  ).join('');
-  return `<table width="100%" cellpadding="0" cellspacing="0"
-    style="border:1px solid #e8eaed;border-radius:8px;margin:14px 0;overflow:hidden;font-size:13px;">
-    ${rowsHtml}
-  </table>`;
-}
-
 // ══════════════════════════════════════════════════════════════════
-// 1. DEPOSIT SUCCESSFUL
-// ══════════════════════════════════════════════════════════════════
-function depositSuccessful({ toEmail, amount, asset, txTime, antiPhishingCode }) {
-  const maskedEmail = esc(toEmail);
-  const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#1a1a1a;">Deposit successful</h2>
-    <p style="margin:0 0 16px;font-size:14px;color:#555;">Hi ${maskedEmail},</p>
-    <table cellpadding="0" cellspacing="0" border="0">
-      <tr>
-        <td style="font-size:14px;color:#555;padding:2px 0;white-space:nowrap;">Transaction time&nbsp;:&nbsp;</td>
-        <td style="font-size:14px;color:#1a1a1a;font-weight:500;">${esc(txTime || new Date().toISOString().replace('T',' ').slice(0,19) + ' (UTC+8)')}</td>
-      </tr>
-      <tr>
-        <td style="font-size:14px;color:#555;padding:2px 0;white-space:nowrap;">Crypto received&nbsp;:&nbsp;</td>
-        <td style="font-size:14px;color:#1a1a1a;font-weight:700;">${esc(amount)} ${esc(asset || 'USDT')}</td>
-      </tr>
-    </table>
-    <p style="margin:16px 0 0;font-size:14px;color:#555;">Go to your assets to check for details.</p>
-  </td></tr>`;
-  return buildShell(content, antiPhishingCode);
-}
-
-// ══════════════════════════════════════════════════════════════════
-// 2. WITHDRAWAL SUCCESSFUL
+// 1. WITHDRAWAL SUCCESSFUL
 // ══════════════════════════════════════════════════════════════════
 function withdrawalSuccessful({ toEmail, amount, asset, withdrawalTime, address, txId, antiPhishingCode }) {
-  const maskedEmail = esc(toEmail);
-  const box = detailBox([
-    ['Withdrawal time', withdrawalTime || new Date().toISOString().replace('T',' ').slice(0,19) + ' (UTC+8)', false],
-    ['Amount', `${amount} ${asset || 'USDT'}`, false],
-    ['Withdrawal address', address || 'N/A', true],
-    ['TxID', txId || 'N/A', true],
-  ]);
+  const assetUpper = esc(String(asset || 'USDT').toUpperCase());
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#1a1a1a;">Withdrawal successful</h2>
-    <p style="margin:0 0 10px;font-size:14px;color:#555;">Hi ${maskedEmail},</p>
-    <p style="margin:0 0 14px;font-size:14px;color:#555;">Withdrawal has been successful. Check the details below:</p>
-    ${box}
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      ${assetUpper} Withdrawal Successful
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      You have successfully withdrawn <strong>${esc(String(amount))} ${assetUpper}</strong> from your account.
+    </p>
+    <p style="margin:0 0 4px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Withdrawal Address:</strong><br/>
+      <span style="font-size:14px;word-break:break-all;">${esc(address || 'N/A')}</span>
+    </p>
+    <p style="margin:12px 0 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Transaction ID:</strong><br/>
+      <span style="font-size:14px;word-break:break-all;">${esc(txId || 'N/A')}</span>
+    </p>
+    ${ctaButton('Visit Your Dashboard', 'https://' + APP_DOMAIN + '/wallet')}
+    ${SECURITY_LINE}
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Please check with the receiving platform or wallet as the transaction is already
+      confirmed on the blockchain explorer.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// 3. WITHDRAWAL VERIFICATION CODE (Confirm your withdrawal)
+// 2. DEPOSIT SUCCESSFUL
+// ══════════════════════════════════════════════════════════════════
+function depositSuccessful({ toEmail, amount, asset, txTime, antiPhishingCode }) {
+  const assetUpper = esc(String(asset || 'USDT').toUpperCase());
+  const time = esc(txTime || new Date().toISOString().replace('T',' ').slice(0,19) + ' (UTC)');
+  const content = `
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      ${assetUpper} Deposit Successful
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      You have successfully deposited <strong>${esc(String(amount))} ${assetUpper}</strong> into your account.
+    </p>
+    <p style="margin:0 0 4px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Transaction Time:</strong><br/>
+      <span style="font-size:14px;">${time}</span>
+    </p>
+    <p style="margin:12px 0 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Amount Credited:</strong><br/>
+      <span style="font-size:14px;">${esc(String(amount))} ${assetUpper}</span>
+    </p>
+    ${ctaButton('Visit Your Dashboard', 'https://' + APP_DOMAIN + '/wallet')}
+    ${SECURITY_LINE}
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Your balance has been updated. Go to your assets to check the details.
+    </p>
+    ${AUTO_MSG}
+  </td></tr>`;
+  return buildShell(content, antiPhishingCode);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// 3. WITHDRAWAL VERIFICATION CODE
 // ══════════════════════════════════════════════════════════════════
 function withdrawalVerificationCode({ toEmail, code, withdrawalTime, amount, asset, address, antiPhishingCode }) {
-  const maskedEmail = esc(toEmail);
+  const assetUpper = esc(String(asset || 'USDT').toUpperCase());
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#1a1a1a;">Confirm your withdrawal</h2>
-    <p style="margin:0 0 10px;font-size:14px;color:#555;">Hi ${maskedEmail},</p>
-    <p style="margin:0 0 18px;font-size:14px;color:#555;line-height:1.6;">
-      You're initiating a withdrawal. Ensure the withdrawal address is correct and confirm that
-      you are the one performing this action before proceeding. Details are shown below.
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      Confirm Your Withdrawal
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      You're initiating a withdrawal of <strong>${esc(String(amount))} ${assetUpper}</strong>.
+      Enter the code below to confirm. The code expires in <strong>10 minutes</strong>.
     </p>
-
-    <!-- OTP CODE BOX -->
-    <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px;">
+    <!-- Verification code box -->
+    <table cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
       <tr>
-        <td style="background:#f8f9fa;border:1px solid #e8eaed;border-radius:8px;padding:14px 22px;text-align:center;">
-          <div style="font-size:36px;font-weight:900;letter-spacing:6px;color:#1a1a1a;font-family:monospace;">${esc(code)}</div>
-        </td>
-        <td style="padding-left:14px;">
-          <div style="background:#e6faf8;border-radius:6px;padding:8px 14px;font-size:13px;color:#00a89a;font-weight:600;line-height:1.5;">
-            Your verification code<br/>will be valid for 10 minutes.
-          </div>
+        <td style="background:#F8F8F8;border:1px solid #E0E0E0;border-radius:6px;
+                   padding:16px 32px;text-align:center;">
+          <span style="font-size:40px;font-weight:900;letter-spacing:8px;color:${BLACK};
+                       font-family:'Courier New',monospace;">${esc(code)}</span>
         </td>
       </tr>
     </table>
-
-    <!-- WITHDRAWAL DETAILS -->
-    <table cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e8eaed;border-radius:8px;padding:10px 14px;width:auto;">
-      <tr>
-        <td style="font-size:13px;color:#888;padding:3px 14px 3px 0;">Withdrawal time</td>
-        <td style="font-size:13px;color:#1a1a1a;">${esc(withdrawalTime || '--')}</td>
-      </tr>
-      <tr>
-        <td style="font-size:13px;color:#888;padding:3px 14px 3px 0;">Amount</td>
-        <td style="font-size:13px;color:#1a1a1a;font-weight:600;">${esc(amount)} ${esc(asset || 'USDT')}</td>
-      </tr>
-      <tr>
-        <td style="font-size:13px;color:#888;padding:3px 14px 3px 0;">Address</td>
-        <td style="font-size:13px;color:#00c2b2;word-break:break-all;max-width:280px;">${esc(address || 'N/A')}</td>
-      </tr>
-    </table>
+    <p style="margin:0 0 4px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Withdrawal Address:</strong><br/>
+      <span style="font-size:14px;word-break:break-all;">${esc(address || 'N/A')}</span>
+    </p>
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Amount:</strong> ${esc(String(amount))} ${assetUpper}
+    </p>
+    ${SECURITY_LINE}
+    <p style="margin:0 0;font-size:15px;color:#CC0000;font-weight:700;line-height:1.7;font-family:Arial,sans-serif;">
+      Never share this code with anyone, including ${esc(APP_NAME)} support.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// 4. OTP (Signup / Login / Password Reset)
+// 4. OTP — Login / Signup / Password Reset
 // ══════════════════════════════════════════════════════════════════
 function otpEmail({ heading, toEmail, code, expiresInMinutes, note, antiPhishingCode }) {
-  const maskedEmail = esc(toEmail);
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#1a1a1a;">${esc(heading)}</h2>
-    <p style="margin:0 0 14px;font-size:14px;color:#555;">Hi ${maskedEmail},</p>
-    <p style="margin:0 0 18px;font-size:14px;color:#555;line-height:1.6;">${esc(note || 'Your verification code is below.')}</p>
-
-    <!-- OTP CODE BOX -->
-    <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px;">
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      ${esc(heading)}
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      ${esc(note || 'Your verification code is below.')}
+    </p>
+    <!-- OTP box -->
+    <table cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
       <tr>
-        <td style="background:#f8f9fa;border:1px solid #e8eaed;border-radius:8px;padding:14px 22px;text-align:center;">
-          <div style="font-size:36px;font-weight:900;letter-spacing:6px;color:#1a1a1a;font-family:monospace;">${esc(code)}</div>
-        </td>
-        <td style="padding-left:14px;">
-          <div style="background:#e6faf8;border-radius:6px;padding:8px 14px;font-size:13px;color:#00a89a;font-weight:600;line-height:1.5;">
-            Your verification code<br/>will be valid for ${Number(expiresInMinutes) || 10} minutes.
-          </div>
+        <td style="background:#F8F8F8;border:1px solid #E0E0E0;border-radius:6px;
+                   padding:16px 32px;text-align:center;">
+          <span style="font-size:40px;font-weight:900;letter-spacing:8px;color:${BLACK};
+                       font-family:'Courier New',monospace;">${esc(code)}</span>
         </td>
       </tr>
     </table>
-    <p style="margin:0;font-size:13px;color:#888;">Never share this code with anyone, including support staff.</p>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      This code is valid for <strong>${Number(expiresInMinutes) || 10} minutes</strong>.
+    </p>
+    ${SECURITY_LINE}
+    <p style="margin:0 0;font-size:15px;color:#CC0000;font-weight:700;line-height:1.7;font-family:Arial,sans-serif;">
+      Never share this code with anyone, including ${esc(APP_NAME)} support staff.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// 5. P2P ORDER NOTIFICATION (seller gets this when buyer places order)
+// 5. P2P — NEW ORDER PLACED (seller notification)
 // ══════════════════════════════════════════════════════════════════
 function p2pOrderNotification({ buyerUsername, orderId, orderNo, antiPhishingCode }) {
+  const ref = esc(orderNo || orderId || '--');
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a1a1a;">
-      <span style="color:#f0b90b;">P2P</span> trading: order notification
-    </h2>
-    <p style="margin:0;font-size:14px;color:#555;line-height:1.7;">
-      <strong>${esc(buyerUsername || 'A buyer')}</strong> has placed an order.
-      Check the order status now.
-      Order no.<strong>${esc(orderNo || orderId || '--')}</strong>
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      New P2P Order Placed
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>${esc(buyerUsername || 'A buyer')}</strong> has placed an order on your listing.
+      Please review and respond promptly.
     </p>
+    <p style="margin:0 0 4px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Order No.:</strong> ${ref}
+    </p>
+    ${ctaButton('View Order', 'https://' + APP_DOMAIN + '/p2p')}
+    ${SECURITY_LINE}
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Please check with the buyer and confirm all payment details before releasing any assets.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// 6. P2P CRYPTO RELEASE (seller: buyer has paid, please release)
+// 6. P2P — BUYER PAID, PLEASE RELEASE (seller)
 // ══════════════════════════════════════════════════════════════════
 function p2pCryptoRelease({ toEmail, buyerUsername, amountInr, paymentMethod, upiId, antiPhishingCode }) {
-  const maskedEmail = esc(toEmail);
-  const upiRow = `
-  <table width="100%" cellpadding="0" cellspacing="0"
-    style="border:1px solid #e8eaed;border-radius:8px;margin:14px 0;overflow:hidden;">
-    <tr>
-      <td style="padding:10px 14px;font-size:13px;color:#888;border-right:1px solid #f0f0f0;white-space:nowrap;">UPI ID</td>
-      <td style="padding:10px 14px;font-size:13px;color:#555;">${esc(upiId || 'ask in chat')}</td>
-    </tr>
-  </table>`;
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a1a1a;">
-      <span style="color:#f0b90b;">P2P</span> trading:
-    </h2>
-    <p style="margin:0 0 6px;font-size:14px;color:#555;">Hi ${maskedEmail}.</p>
-    <p style="margin:0 0 14px;font-size:14px;color:#555;line-height:1.7;">
-      <strong>${esc(buyerUsername || 'Buyer')}</strong> has completed the payment via
-      <strong>${esc(paymentMethod || 'UPI')}</strong>.
-      Confirm receipt of <strong>${esc(String(amountInr || 0))} INR</strong> in the following account.
-      If the funds have been received, release the coins promptly.
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      Payment Received — Please Release
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>${esc(buyerUsername || 'Buyer')}</strong> has completed the payment of
+      <strong>&#8377;${esc(String(amountInr || 0))}</strong>
+      via <strong>${esc(paymentMethod || 'UPI')}</strong>.
     </p>
-    ${upiRow}
+    <p style="margin:0 0 4px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Payment Method:</strong> ${esc(paymentMethod || 'UPI')}
+    </p>
+    <p style="margin:8px 0 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>UPI / Account ID:</strong> ${esc(upiId || 'Check in order chat')}
+    </p>
+    ${ctaButton('Verify & Release Crypto', 'https://' + APP_DOMAIN + '/p2p')}
+    ${SECURITY_LINE}
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Please verify receipt of funds in your bank or UPI account before releasing.
+      Do not release until you have confirmed the payment is in your account.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// 7. P2P ORDER CANCELED
+// 7. P2P — ORDER CANCELLED
 // ══════════════════════════════════════════════════════════════════
 function p2pOrderCanceled({ toEmail, orderNo, canceledBy, antiPhishingCode }) {
-  const maskedEmail = esc(toEmail);
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a1a1a;">
-      <span style="color:#f0b90b;">P2P</span> trading:
-    </h2>
-    <p style="margin:0 0 6px;font-size:14px;color:#555;">Hi ${maskedEmail}.</p>
-    <p style="margin:0 0 6px;font-size:14px;color:#555;line-height:1.7;">
-      Your sell order has been canceled by the ${esc(canceledBy || 'buyer')}.
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      P2P Order Cancelled
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Your P2P order has been cancelled by <strong>${esc(canceledBy || 'the other party')}</strong>.
+      No funds have been deducted from your account.
     </p>
-    <p style="margin:0;font-size:14px;color:#555;">
-      Order no.<strong>${esc(orderNo || '--')}</strong>
+    <p style="margin:0 0 4px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Order No.:</strong> ${esc(orderNo || '--')}
     </p>
+    ${ctaButton('Find a New Trade', 'https://' + APP_DOMAIN + '/p2p')}
+    ${SECURITY_LINE}
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      If you believe this was an error, please contact customer support immediately.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
@@ -369,20 +436,25 @@ function p2pOrderCanceled({ toEmail, orderNo, canceledBy, antiPhishingCode }) {
 // 8. KYC APPROVED
 // ══════════════════════════════════════════════════════════════════
 function kycApproved({ toEmail, username, antiPhishingCode }) {
-  const maskedEmail = esc(toEmail);
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#1a1a1a;">Identity verified ✅</h2>
-    <p style="margin:0 0 10px;font-size:14px;color:#555;">Hi ${maskedEmail},</p>
-    <p style="margin:0 0 16px;font-size:14px;color:#555;line-height:1.6;">
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      Identity Verification Approved
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Hi <strong>${esc(username || toEmail)}</strong>,
+    </p>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
       Your KYC verification has been <strong style="color:#16a34a;">approved</strong>.
       You can now place buy and sell orders on ${esc(APP_NAME)} P2P.
     </p>
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px 20px;text-align:center;margin:10px 0;">
-      <div style="font-size:28px;">✅</div>
-      <div style="font-weight:700;color:#16a34a;font-size:15px;margin-top:6px;">Identity Verified</div>
-      <div style="font-size:13px;color:#555;margin-top:4px;">You're all set to trade on P2P</div>
-    </div>
+    ${ctaButton('Start Trading on P2P', 'https://' + APP_DOMAIN + '/p2p')}
+    ${SECURITY_LINE}
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Please check with your account dashboard to see your updated trading limits.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
@@ -391,74 +463,93 @@ function kycApproved({ toEmail, username, antiPhishingCode }) {
 // 9. KYC REJECTED
 // ══════════════════════════════════════════════════════════════════
 function kycRejected({ toEmail, username, reason, antiPhishingCode }) {
-  const maskedEmail = esc(toEmail);
-  const reasonBox = reason
-    ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;margin:12px 0;">
-        <strong style="color:#dc2626;font-size:13px;">Reason:</strong>
-        <p style="margin:4px 0 0;font-size:13px;color:#555;">${esc(reason)}</p>
-      </div>` : '';
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#1a1a1a;">KYC verification update</h2>
-    <p style="margin:0 0 10px;font-size:14px;color:#555;">Hi ${maskedEmail},</p>
-    <p style="margin:0 0 8px;font-size:14px;color:#555;line-height:1.6;">
-      Your KYC submission was <strong style="color:#dc2626;">not approved</strong> at this time.
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      KYC Verification Update
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Hi <strong>${esc(username || toEmail)}</strong>,
     </p>
-    ${reasonBox}
-    <p style="margin:0;font-size:14px;color:#555;">Please resubmit with correct documents in the app.</p>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Your KYC submission was <strong style="color:#CC0000;">not approved</strong> at this time.
+      ${reason ? `<br/><br/><strong>Reason:</strong> ${esc(reason)}` : ''}
+    </p>
+    ${ctaButton('Resubmit KYC', 'https://' + APP_DOMAIN + '/kyc')}
+    ${SECURITY_LINE}
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Please ensure your documents are clear, valid and match your account details.
+      Contact customer support if you need assistance.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// 10. P2P DISPUTE RAISED (admin alert)
+// 10. P2P — DISPUTE RAISED (admin alert)
 // ══════════════════════════════════════════════════════════════════
 function p2pDisputeRaised({ toEmail, raisedBy, orderId, orderNo, antiPhishingCode }) {
+  const ref = esc(orderNo || orderId || '--');
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a1a1a;">
-      <span style="color:#f0b90b;">P2P</span> Dispute — Admin Action Required
-    </h2>
-    <p style="margin:0 0 14px;font-size:14px;color:#555;line-height:1.7;">
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      P2P Dispute Raised — Action Required
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
       <strong>${esc(raisedBy || 'A user')}</strong> has raised a dispute on order
-      <strong>${esc(orderNo || orderId || '--')}</strong>.
-      Please review and resolve in the admin panel.
+      <strong>${ref}</strong>. Please review and resolve in the admin panel.
     </p>
-    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;">
-      <strong style="color:#92400e;font-size:13px;">⚠️ Action Required:</strong>
-      <p style="margin:4px 0 0;font-size:13px;color:#78350f;">Login to admin panel → P2P → Disputes</p>
-    </div>
+    <p style="margin:0 0 4px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Order No.:</strong> ${ref}
+    </p>
+    ${ctaButton('Review in Admin Panel', 'https://' + APP_DOMAIN + '/admin')}
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Navigate to <strong>Admin → P2P → Disputes</strong> to review evidence and resolve.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// 11. ORDER COMPLETED / CRYPTO RELEASED (buyer notification)
+// 11. P2P — ORDER COMPLETED / CRYPTO RELEASED (buyer)
 // ══════════════════════════════════════════════════════════════════
 function p2pOrderCompleted({ toEmail, orderId, orderNo, assetAmount, asset, antiPhishingCode }) {
-  const maskedEmail = esc(toEmail);
+  const assetUpper = esc(String(asset || 'USDT').toUpperCase());
+  const ref = esc(orderNo || orderId || '--');
   const content = `
-  <tr><td style="padding:24px 28px 20px;">
-    <h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a1a1a;">
-      <span style="color:#f0b90b;">P2P</span> trading: crypto released ✅
-    </h2>
-    <p style="margin:0 0 6px;font-size:14px;color:#555;">Hi ${maskedEmail}.</p>
-    <p style="margin:0 0 14px;font-size:14px;color:#555;line-height:1.7;">
-      The seller has released your crypto. Your
-      <strong>${esc(assetAmount)} ${esc(asset || 'USDT')}</strong> is now available in your wallet.
+  <tr><td style="padding:32px 32px 8px;">
+    <h1 style="margin:0 0 20px;font-size:26px;font-weight:700;color:${BLACK};
+               font-family:Arial,sans-serif;line-height:1.2;">
+      ${assetUpper} P2P Order Completed
+    </h1>
+    <p style="margin:0 0 16px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      You have successfully received
+      <strong>${esc(String(assetAmount))} ${assetUpper}</strong> from your P2P order.
+      The funds are now available in your wallet.
     </p>
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;text-align:center;">
-      <div style="font-size:22px;">✅</div>
-      <div style="font-weight:700;color:#16a34a;font-size:14px;margin-top:4px;">Order Completed Successfully</div>
-      <div style="font-size:12px;color:#555;margin-top:2px;">Order no. ${esc(orderNo || orderId || '--')}</div>
-    </div>
+    <p style="margin:0 0 4px;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Amount Received:</strong> ${esc(String(assetAmount))} ${assetUpper}
+    </p>
+    <p style="margin:8px 0 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      <strong>Order No.:</strong> ${ref}
+    </p>
+    ${ctaButton('Visit Your Dashboard', 'https://' + APP_DOMAIN + '/wallet')}
+    ${SECURITY_LINE}
+    <p style="margin:12px 0;font-size:15px;color:${TEXT};line-height:1.7;font-family:Arial,sans-serif;">
+      Please check with your wallet to confirm the balance has been updated.
+    </p>
+    ${AUTO_MSG}
   </td></tr>`;
   return buildShell(content, antiPhishingCode);
 }
 
-// ── Subject helpers ────────────────────────────────────────────────────────
+// ─── Subject helper ────────────────────────────────────────────────────────
 function subject(title) {
-  return `\u3010${APP_NAME}\u3011 ${title}`;
+  return `[${APP_NAME}] ${title}`;
 }
 
 module.exports = {
