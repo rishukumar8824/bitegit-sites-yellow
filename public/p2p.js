@@ -159,6 +159,29 @@ let currentUser = null;
 let activeDealOffer = null;
 let dealSyncLock = false;
 
+function normalizeCurrentUserPayload(user) {
+  if (!user || typeof user !== 'object') {
+    return null;
+  }
+  var email = String(user.email || '').trim().toLowerCase();
+  var username = String(user.username || '').trim();
+  var id = String(user.id || user.userId || email || username || '').trim();
+  if (!id) {
+    return null;
+  }
+  return {
+    ...user,
+    id: id,
+    userId: id,
+    email: email,
+    username: username
+  };
+}
+
+function getCurrentUserId() {
+  return currentUser ? String(currentUser.id || currentUser.userId || '').trim() : '';
+}
+
 // ── Global per-action locks — prevent duplicate API calls ──────────────────
 var _loginInFlight     = false; // login button
 var _orderActionLock   = false; // release / mark_paid / cancel / dispute
@@ -891,6 +914,7 @@ function storeOrderForMobile(order) {
   }
 
   const previous = mobileOrdersCache.get(order.id) || {};
+  const currentUserId = getCurrentUserId();
   const next = {
     ...previous,
     ...order,
@@ -910,7 +934,7 @@ function storeOrderForMobile(order) {
     isParticipant:
       typeof order.isParticipant === 'boolean'
         ? order.isParticipant
-        : previous.isParticipant || Boolean(currentUser && (order.buyerUserId === currentUser.id || order.sellerUserId === currentUser.id))
+        : previous.isParticipant || Boolean(currentUserId && (order.buyerUserId === currentUserId || order.sellerUserId === currentUserId))
   };
 
   mobileOrdersCache.set(order.id, next);
@@ -1941,10 +1965,11 @@ function getOrderRole(order) {
     return '';
   }
 
-  if (currentUser.id && currentUser.id === order.buyerUserId) {
+  var currentUserId = getCurrentUserId();
+  if (currentUserId && currentUserId === order.buyerUserId) {
     return 'buyer';
   }
-  if (currentUser.id && currentUser.id === order.sellerUserId) {
+  if (currentUserId && currentUserId === order.sellerUserId) {
     return 'seller';
   }
   if (currentUser.username && currentUser.username === order.buyerUsername) {
@@ -2002,8 +2027,8 @@ async function loadCurrentUser() {
   try {
     const hint = localStorage.getItem('_p2p_hint');
     if (hint) {
-      const hintUser = JSON.parse(hint);
-      if (hintUser && hintUser.id) {
+      const hintUser = normalizeCurrentUserPayload(JSON.parse(hint));
+      if (hintUser) {
         currentUser = hintUser;
         updateUserUi(); // show logged-in UI immediately, no waiting
         // Show cached orders instantly — no network fetch yet to avoid aborting the confirmed fetch below
@@ -2017,14 +2042,15 @@ async function loadCurrentUser() {
   try {
     const response = await fetch('/api/p2p/me', { credentials: 'include' });
     const data = await response.json();
-    if (data.loggedIn && data.user) {
-      var _prevId = currentUser && currentUser.id;
-      if (_prevId !== data.user.id) {
+    var normalizedUser = normalizeCurrentUserPayload(data.user);
+    if (data.loggedIn && normalizedUser) {
+      var _prevId = getCurrentUserId();
+      if (_prevId !== normalizedUser.id) {
         _clearOrdersCache(); // different user → wipe all stale state immediately
       }
-      currentUser = data.user;
+      currentUser = normalizedUser;
       updateCurrentUserKyc(currentUser.kyc || {});
-      try { localStorage.setItem('_p2p_hint', JSON.stringify({ id: currentUser.id, username: currentUser.username, email: currentUser.email, role: currentUser.role })); } catch(_) {}
+      try { localStorage.setItem('_p2p_hint', JSON.stringify({ id: getCurrentUserId(), username: currentUser.username, email: currentUser.email, role: currentUser.role })); } catch(_) {}
       // Single call — fetchOrdersSafe shows cache instantly then fetches fresh
       fetchOrdersSafe();
       _startFallbackPoll(); // 15s fallback poll in case SSE is down
@@ -2047,8 +2073,9 @@ async function loadCurrentUser() {
       try {
         const r = await fetch('/api/p2p/me', { credentials: 'include' });
         const d = await r.json();
-        if (d.loggedIn && d.user) {
-          currentUser = d.user;
+        var retryUser = normalizeCurrentUserPayload(d.user);
+        if (d.loggedIn && retryUser) {
+          currentUser = retryUser;
           updateCurrentUserKyc(currentUser.kyc || {});
           updateUserUi();
           // Re-run user-specific loads now that we have a valid session
@@ -2102,10 +2129,13 @@ async function loginUser() {
     // Always wipe all order state on login — guarantees zero cross-user contamination
     _clearOrdersCache();
 
-    currentUser = data.user;
+    currentUser = normalizeCurrentUserPayload(data.user);
+    if (!currentUser) {
+      throw new Error('Login session payload is incomplete.');
+    }
     updateCurrentUserKyc(currentUser?.kyc || {});
     // Persist a session hint so refresh shows logged-in UI instantly (no flicker)
-    try { localStorage.setItem('_p2p_hint', JSON.stringify({ id: currentUser.id, username: currentUser.username, email: currentUser.email, role: currentUser.role })); } catch(_) {}
+    try { localStorage.setItem('_p2p_hint', JSON.stringify({ id: getCurrentUserId(), username: currentUser.username, email: currentUser.email, role: currentUser.role })); } catch(_) {}
     updateUserUi();
     setAuthModalOpen(false);
     setP2PNavOpen(false);
@@ -2231,7 +2261,7 @@ function renderOffers(data, append) {
     offersMap.set(offer.id, offer);
 
     const actionLabel = data.side === 'buy' ? 'Buy' : 'Sell';
-    const isOwnAd = currentUser && offer.createdByUserId === currentUser.id;
+    const isOwnAd = currentUser && offer.createdByUserId === getCurrentUserId();
     const payments = offer.payments
       .map((method, paymentIndex) => `<span class="pay-chip pay-chip-${paymentIndex % 4}">${escapeHtml(method)}</span>`)
       .join(' ');
@@ -3446,7 +3476,7 @@ function _ordCard(order) {
   var qtyStr = qty % 1 === 0 ? qty.toString() : parseFloat(qty.toFixed(4)).toString();
   var fmt = function(n) { return formatNumber ? formatNumber(n) : n; };
   // Show only the OTHER person's name — not both participants
-  var _myId = currentUser && currentUser.id;
+  var _myId = getCurrentUserId();
   var _myName = currentUser && currentUser.username;
   var _isBuyer = (_myId && (order.buyerUserId === _myId || order.buyerId === _myId)) ||
                  (_myName && order.buyerUsername === _myName);
@@ -3626,18 +3656,20 @@ var _ORD_CACHE_KEY    = 'p2p_orders_cache';
 var _ORD_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function _saveOrdCache(orders) {
-  if (!currentUser || !currentUser.id) return;
+  var currentUserId = getCurrentUserId();
+  if (!currentUserId) return;
   try {
     localStorage.setItem(_ORD_CACHE_KEY, JSON.stringify({
-      ts: Date.now(), userId: currentUser.id, orders: orders
+      ts: Date.now(), userId: currentUserId, orders: orders
     }));
   } catch(_) {}
 }
 function _loadOrdCache() {
   try {
     var raw = JSON.parse(localStorage.getItem(_ORD_CACHE_KEY) || 'null');
+    var currentUserId = getCurrentUserId();
     if (!raw) return [];
-    if (!currentUser || !currentUser.id || raw.userId !== currentUser.id) {
+    if (!currentUserId || raw.userId !== currentUserId) {
       localStorage.removeItem(_ORD_CACHE_KEY);
       return [];
     }
@@ -3738,7 +3770,7 @@ function _ordFetchActiveOrdersFallback(fetchOpts, parentReqId) {
 }
 
 function _fetchOrderHistoryInBackground(parentReqId) {
-  if (!currentUser || !currentUser.id) return;
+  if (!getCurrentUserId()) return;
   if (_ordHistoryAbort) { try { _ordHistoryAbort.abort(); } catch(_) {} }
 
   var historyCtrl = window.AbortController ? new AbortController() : null;
@@ -3807,12 +3839,12 @@ function _ordShowLogin() {
 }
 
 function _ordDrainQueuedRefresh() {
-  if (!_ordRefreshQueued || !currentUser || !currentUser.id) {
+  if (!_ordRefreshQueued || !getCurrentUserId()) {
     return;
   }
   _ordRefreshQueued = false;
   setTimeout(function() {
-    if (currentUser && currentUser.id) {
+    if (getCurrentUserId()) {
       fetchOrdersSafe();
     }
   }, 80);
@@ -3821,7 +3853,7 @@ function _ordDrainQueuedRefresh() {
 // ── SINGLE ENTRY POINT ─────────────────────────────────────────────────────
 // fetchOrdersSafe() — race-protected, abort-controller guarded, retry-capped
 function fetchOrdersSafe() {
-  if (!currentUser || !currentUser.id) { _ordShowLogin(); return; }
+  if (!getCurrentUserId()) { _ordShowLogin(); return; }
 
   if (_ordFetching) {
     _ordRefreshQueued = true;
