@@ -5832,10 +5832,10 @@ window.deleteMobAd = async function(offerId) {
     if (_userStream) { _userStream.close(); _userStream = null; }
     _userStream = new EventSource('/api/p2p/me/stream', { withCredentials: true });
     _userStream.addEventListener('new_order', function(e) {
-      // New order arrived — refresh immediately
+      // New order arrived — force fresh fetch immediately
       loadLiveOrders();
-      // Reset loaded flag so orders screen fetches fresh data
       _ordLoaded = false;
+      _ordFetching = false; // clear lock so fetch isn't skipped
       loadBybitorOrders();
       // Switch orders screen to pending tab if it's open
       var ordScreen = document.getElementById('mobOrdersScreen');
@@ -5844,8 +5844,9 @@ window.deleteMobAd = async function(offerId) {
       }
     });
     _userStream.addEventListener('order_updated', function(e) {
-      // Order status changed (paid, released, cancelled) — refresh orders
+      // Order status changed (paid, released, cancelled) — force fresh fetch
       _ordLoaded = false;
+      _ordFetching = false; // clear lock so fetch isn't skipped
       loadBybitorOrders();
     });
     _userStream.onerror = function() {

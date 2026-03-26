@@ -2670,6 +2670,10 @@ app.post('/api/p2p/orders/:orderId/mark-paid', requiresP2PUser, async (req, res)
     const updatedOrder = await walletService.markOrderPaid(req.params.orderId, req.p2pUser);
     const normalizedOrder = normalizeOrderState(updatedOrder);
     broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
+    // Push real-time status update to both buyer and seller
+    const pushPayload = { orderId: updatedOrder.id, reference: updatedOrder.reference, status: updatedOrder.status };
+    if (updatedOrder.sellerId) broadcastUserEvent(updatedOrder.sellerId, 'order_updated', pushPayload);
+    if (updatedOrder.buyerId) broadcastUserEvent(updatedOrder.buyerId, 'order_updated', pushPayload);
     return res.json({ success: true, order: normalizedOrder });
   } catch (error) {
     return res.status(500).json({ message: error.message || 'Server error.' });
@@ -2682,6 +2686,10 @@ app.post('/api/p2p/orders/:orderId/cancel', requiresP2PUser, async (req, res) =>
     const updatedOrder = await walletService.cancelOrder(req.params.orderId, req.p2pUser, 'CANCELLED');
     const normalizedOrder = normalizeOrderState(updatedOrder);
     broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
+    // Push real-time status update to both buyer and seller
+    const pushPayload = { orderId: updatedOrder.id, reference: updatedOrder.reference, status: updatedOrder.status };
+    if (updatedOrder.sellerId) broadcastUserEvent(updatedOrder.sellerId, 'order_updated', pushPayload);
+    if (updatedOrder.buyerId) broadcastUserEvent(updatedOrder.buyerId, 'order_updated', pushPayload);
     return res.json({ success: true, order: normalizedOrder });
   } catch (error) {
     return res.status(500).json({ message: error.message || 'Server error.' });
@@ -3008,6 +3016,11 @@ app.post('/api/p2p/orders/:orderId/status', requiresP2PUser, async (req, res) =>
 
     broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
     broadcastOrderEvent(updatedOrder.id, 'message_update', { messages: normalizedMessages });
+
+    // Push real-time status update to both buyer and seller via user SSE stream
+    const _pushPayload = { orderId: updatedOrder.id, reference: updatedOrder.reference, status: updatedOrder.status };
+    if (updatedOrder.sellerId) broadcastUserEvent(updatedOrder.sellerId, 'order_updated', _pushPayload);
+    if (updatedOrder.buyerId) broadcastUserEvent(updatedOrder.buyerId, 'order_updated', _pushPayload);
 
     // Send email notifications (non-blocking)
     if (p2pEmailService) {
