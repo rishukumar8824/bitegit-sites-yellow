@@ -684,9 +684,19 @@
         </div>
         <button class="pay-btn" id="chatPayBtn">Pay</button>
       </div>
-      <div id="chatWaitingBar" style="display:none;padding:10px 0 4px;align-items:center;gap:8px;">
-        <div style="width:8px;height:8px;border-radius:50%;background:#f0b90b;flex-shrink:0;"></div>
-        <span style="font-size:14px;font-weight:600;color:#fff;">Waiting for seller's confirmation</span>
+      <div id="chatWaitingBar" style="display:none;padding:10px 0 4px;flex-direction:column;gap:0;">
+        <!-- Top row: To be received + Cancel button -->
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:#fff;">To be received <span id="chatReceiveAmount">0.00</span> USDT</div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:2px;">Waiting for seller to release</div>
+          </div>
+          <button id="chatCancelOrAppealBtn" style="background:transparent;border:1px solid rgba(255,255,255,0.18);color:rgba(255,255,255,0.55);border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;flex-shrink:0;">Cancel</button>
+        </div>
+        <!-- 5-min appeal banner: shown after 5 min of waiting -->
+        <div id="chatAppealBanner" style="display:none;margin-top:8px;padding:8px 10px;background:rgba(240,185,11,0.07);border-radius:8px;border:1px solid rgba(240,185,11,0.18);font-size:12px;color:rgba(255,255,255,0.55);line-height:1.5;">
+          Haven't received your assets? <span id="chatFileAppealBtn" style="color:#00d4d4;cursor:pointer;font-weight:600;text-decoration:underline;">File an appeal</span> and wait for our customer support team to help.
+        </div>
       </div>
       <!-- SELLER: status bars -->
       <div id="chatSellerWaitBar" style="display:none;padding:10px 0 4px;align-items:center;gap:8px;">
@@ -701,11 +711,17 @@
         <button id="chatReleaseBtn" style="background:#00d4d4;color:#000;border:none;border-radius:8px;padding:8px 18px;font-size:14px;font-weight:700;cursor:pointer;">Release</button>
       </div>
       <!-- COMPLETED: shown for both buyer and seller when order is done -->
-      <div id="chatCompletedBar" style="display:none;padding:10px 0 4px;align-items:center;gap:10px;">
-        <div style="width:22px;height:22px;border-radius:50%;background:#00c896;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:#000;font-weight:800;">✓</div>
-        <div style="display:flex;flex-direction:column;">
-          <span style="font-size:14px;font-weight:700;color:#00c896;">Order Completed</span>
-          <span id="chatCompletedAmount" style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:1px;"></span>
+      <div id="chatCompletedBar" style="display:none;padding:10px 0 4px;flex-direction:column;gap:0;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:22px;height:22px;border-radius:50%;background:#00c896;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;color:#000;font-weight:800;">✓</div>
+          <div style="display:flex;flex-direction:column;">
+            <span style="font-size:14px;font-weight:700;color:#00c896;">Order Completed</span>
+            <span id="chatCompletedAmount" style="font-size:12px;color:rgba(255,255,255,0.5);margin-top:1px;"></span>
+          </div>
+        </div>
+        <!-- Order Inquiry link: buyer can raise dispute after completion -->
+        <div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.05);">
+          <span id="chatOrderInquiryBtn" style="font-size:12px;color:rgba(255,255,255,0.35);cursor:pointer;">Order Inquiry &nbsp;<span style="color:#00d4d4;text-decoration:underline;">File an appeal</span></span>
         </div>
       </div>
     </div>
@@ -941,7 +957,7 @@
   var selectedPaidOption = 0;
   var selectedReason = -1;
   var checkboxChecked = false;
-  var cancelSource = 'order'; // 'order' or 'transfer'
+  var cancelSource = 'order'; // 'order', 'transfer', or 'chat'
   var currentTab = 'fiat';
   var chatPollTimer = null;
   var chatRenderedIds = {};
@@ -1535,6 +1551,63 @@
     var _doReleaseLocked = mkDebounce(doRelease);
     document.getElementById('chatReleaseBtn').addEventListener('click', _doReleaseLocked);
     document.getElementById('chatReleaseBtn').addEventListener('touchend', function(e) { e.preventDefault(); _doReleaseLocked(); });
+
+    // Cancel / Appeal button in waiting bar (buyer PAYMENT_SENT state)
+    var _chatCancelInFlight = false;
+    var _doCancelOrAppeal = mkDebounce(async function() {
+      if (!currentOrder || !currentOrder.id) return;
+      var canCancel = canCancelCurrentOrder();
+      if (!canCancel) {
+        // PAYMENT_SENT — file appeal/dispute instead
+        _doFileAppeal();
+        return;
+      }
+      // CREATED state — immediate cancel with one confirm
+      if (!confirm('Cancel this order?')) return;
+      if (_chatCancelInFlight) return;
+      _chatCancelInFlight = true;
+      var btn = document.getElementById('chatCancelOrAppealBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
+      showToast('Cancelling order…');
+      try {
+        var res = await fetch('/api/p2p/orders/' + currentOrder.id + '/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ action: 'cancel' })
+        });
+        var data = await res.json().catch(function() { return {}; });
+        if (!res.ok) throw new Error((data && data.message) || 'Unable to cancel order.');
+        currentOrder = data.order || currentOrder;
+        cacheCurrentOrder();
+        syncOrderUrl();
+        stopChatPoll();
+        var h1 = document.querySelector('#screen-canceled .page-heading h1');
+        var sub = document.querySelector('#screen-canceled .page-heading div');
+        if (h1) h1.textContent = 'Order Cancelled';
+        if (sub) sub.textContent = 'This order has been cancelled.';
+        var pnoBtn = document.getElementById('placeNewOrderBtn');
+        if (pnoBtn) pnoBtn.style.display = '';
+        showScreen('screen-canceled');
+        showToast('Order cancelled');
+      } catch (e) {
+        showToast((e && e.message) || 'Cancel failed. Try again.');
+        if (btn) { btn.disabled = false; btn.textContent = canCancelCurrentOrder() ? 'Cancel' : 'Appeal'; }
+      } finally {
+        _chatCancelInFlight = false;
+      }
+    });
+    document.getElementById('chatCancelOrAppealBtn').addEventListener('click', _doCancelOrAppeal);
+    document.getElementById('chatCancelOrAppealBtn').addEventListener('touchend', function(e) { e.preventDefault(); _doCancelOrAppeal(); });
+
+    // "File an appeal" link in 5-min appeal banner
+    document.getElementById('chatFileAppealBtn').addEventListener('click', function() { _doFileAppeal(); });
+    document.getElementById('chatFileAppealBtn').addEventListener('touchend', function(e) { e.preventDefault(); _doFileAppeal(); });
+
+    // Order Inquiry button (post-completion dispute)
+    document.getElementById('chatOrderInquiryBtn').addEventListener('click', function() { _doFileAppeal(); });
+    document.getElementById('chatOrderInquiryBtn').addEventListener('touchend', function(e) { e.preventDefault(); _doFileAppeal(); });
+
     document.getElementById('chatSendBtn').addEventListener('click', sendMsg);
     document.getElementById('chatSendBtn').addEventListener('touchend', function(e) { e.preventDefault(); sendMsg(); });
     document.getElementById('chatInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') sendMsg(); });
@@ -1574,7 +1647,11 @@
     document.getElementById('proceedCancelBtn').addEventListener('touchend', function(e) { e.preventDefault(); _doProceedCancel(); });
 
     // Screen 6: Cancel Reason
-    document.getElementById('crBackBtn').addEventListener('click', function() { showScreen('screen-before-cancel'); });
+    document.getElementById('crBackBtn').addEventListener('click', function() {
+      // If came from chat (direct cancel), go back to chat; otherwise to educational screen
+      if (cancelSource === 'chat') { showScreen('screen-chat'); }
+      else { showScreen('screen-before-cancel'); }
+    });
     document.getElementById('cancel-checkbox').addEventListener('click', toggleCheckbox);
     document.getElementById('cancel-checkbox').addEventListener('touchend', function(e) { e.preventDefault(); toggleCheckbox(); });
     var _doConfirmCancel = mkDebounce(withLock(confirmCancel));
@@ -2110,6 +2187,23 @@
   }
 
   // Set up chat UI based on whether current user is buyer or seller
+  var _appealBannerTimer = null;
+
+  function _clearAppealBannerTimer() {
+    if (_appealBannerTimer) { clearTimeout(_appealBannerTimer); _appealBannerTimer = null; }
+    var banner = document.getElementById('chatAppealBanner');
+    if (banner) banner.style.display = 'none';
+  }
+
+  function _scheduleAppealBanner() {
+    _clearAppealBannerTimer();
+    // Show "Haven't received?" banner 5 minutes after buyer marks paid
+    _appealBannerTimer = setTimeout(function() {
+      var banner = document.getElementById('chatAppealBanner');
+      if (banner) banner.style.display = 'block';
+    }, 5 * 60 * 1000);
+  }
+
   function setupChatForRole(status) {
     var s = String(status || '').toUpperCase();
     var isPaid = s === 'PAID' || s === 'PAYMENT_SENT';
@@ -2118,11 +2212,7 @@
     // Update chat title to show counterparty name
     var titleEl = document.getElementById('chatTitle');
     if (titleEl && currentOrder) {
-      if (isSeller) {
-        titleEl.textContent = currentOrder.buyerUsername || 'Buyer';
-      } else {
-        titleEl.textContent = currentOrder.sellerUsername || 'Seller';
-      }
+      titleEl.textContent = isSeller ? (currentOrder.buyerUsername || 'Buyer') : (currentOrder.sellerUsername || 'Seller');
     }
 
     // Get all bars
@@ -2138,37 +2228,96 @@
     if (sellerWaitBar) sellerWaitBar.style.display = 'none';
     if (sellerReleaseBar) sellerReleaseBar.style.display = 'none';
     if (completedBar) completedBar.style.display = 'none';
+    _clearAppealBannerTimer();
 
     if (isCompleted) {
-      // Show completed bar for both buyer and seller
       if (completedBar) completedBar.style.display = 'flex';
       var amtEl = document.getElementById('chatCompletedAmount');
       if (amtEl && currentOrder) {
         var fiatAmt = Number(currentOrder.fiatAmount || currentOrder.amountInr || 0);
         amtEl.textContent = '₹ ' + fmtInr(fiatAmt) + ' · ' + Number(currentOrder.cryptoAmount || 0).toFixed(4) + ' USDT';
       }
-      // Hide input bar for completed orders
+      // Order Inquiry: show only to buyer
+      var inquiryBtn = document.getElementById('chatOrderInquiryBtn');
+      if (inquiryBtn) inquiryBtn.parentElement.style.display = isSeller ? 'none' : '';
+      // Hide input for completed orders
       var inputBar = document.querySelector('.chat-input-bar');
       if (inputBar) inputBar.style.display = 'none';
     } else {
-      // Show input for active orders
       var inputBarA = document.querySelector('.chat-input-bar');
       if (inputBarA) inputBarA.style.display = '';
       if (isSeller) {
-        // Seller view
         if (isPaid) {
           if (sellerReleaseBar) sellerReleaseBar.style.display = 'flex';
         } else {
           if (sellerWaitBar) sellerWaitBar.style.display = 'flex';
         }
       } else {
-        // Buyer view
         if (isPaid) {
-          if (waitBar) waitBar.style.display = 'flex';
+          // Show redesigned waiting bar with USDT amount
+          if (waitBar) {
+            waitBar.style.display = 'flex';
+            var rcvEl = document.getElementById('chatReceiveAmount');
+            if (rcvEl && currentOrder) {
+              rcvEl.textContent = Number(currentOrder.cryptoAmount || 0).toFixed(4);
+            }
+            // Update cancel button label: PAYMENT_SENT → "Appeal", CREATED → "Cancel"
+            var cancelOrAppealBtn = document.getElementById('chatCancelOrAppealBtn');
+            if (cancelOrAppealBtn) {
+              var canCancel = canCancelCurrentOrder();
+              cancelOrAppealBtn.textContent = canCancel ? 'Cancel' : 'Appeal';
+            }
+            // Start 5-min timer to show appeal banner
+            _scheduleAppealBanner();
+          }
         } else {
           if (payBar) payBar.style.display = 'flex';
         }
       }
+    }
+  }
+
+  // File appeal / raise dispute
+  var _appealInFlight = false;
+  async function _doFileAppeal() {
+    if (!currentOrder || !currentOrder.id) return;
+    if (_appealInFlight) return;
+    var s = String(currentOrder.status || '').toUpperCase();
+    var isCompleted = s === 'RELEASED' || s === 'COMPLETED';
+    var msg = isCompleted
+      ? 'Submit an order inquiry? Our support team will review and assist you.'
+      : 'File an appeal? This will pause the order and our support team will review it.';
+    if (!confirm(msg)) return;
+    _appealInFlight = true;
+    showToast('Submitting appeal...');
+    try {
+      var res = await fetch('/api/p2p/orders/' + currentOrder.id + '/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action: 'dispute' })
+      });
+      var data = await res.json().catch(function() { return {}; });
+      if (res.ok && data.order) {
+        currentOrder = data.order;
+        cacheCurrentOrder();
+        showToast('Appeal filed. Admin will review shortly.');
+        setupChatForRole(currentOrder.status);
+        var infoMsg = {
+          id: 'auto_appeal_' + Date.now(),
+          sender: 'System',
+          messageType: 'system',
+          text: 'An appeal has been filed for this order. Please wait for admin review.',
+          createdAt: Date.now()
+        };
+        appendChatMessage(infoMsg);
+      } else {
+        showToast(data.message || 'Failed to file appeal. Try again.');
+      }
+    } catch (err) {
+      showToast('Network error. Try again.');
+    } finally {
+      _appealInFlight = false;
     }
   }
 
