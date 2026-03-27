@@ -950,7 +950,7 @@ let _ddCurrentOrderId = null;
 async function openDisputeDetail(orderId) {
   _ddCurrentOrderId = orderId;
   const modal = document.getElementById('p2pDisputeDetail');
-  modal.style.display = 'flex';
+  modal.style.display = 'block';
 
   // Reset fields
   ['ddOrderRef','ddBuyer','ddSeller','ddAmount','ddStatus','ddPayment','ddTime'].forEach(id => {
