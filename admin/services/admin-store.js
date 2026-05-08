@@ -1251,6 +1251,32 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     }));
   }
 
+  async function createDepositRequest(data = {}) {
+    const id = `dep_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const now = new Date();
+    const doc = {
+      id,
+      userId: String(data.userId || '').trim(),
+      email: String(data.email || '').trim(),
+      username: String(data.username || '').trim(),
+      coin: String(data.coin || 'USDT').trim().toUpperCase(),
+      currency: String(data.coin || 'USDT').trim().toUpperCase(),
+      network: String(data.network || '').trim().toUpperCase(),
+      address: String(data.address || '').trim(),
+      amount: Number(data.amount) || 0,
+      txHash: String(data.txHash || '').trim(),
+      proofUrl: String(data.proofUrl || '').trim(),
+      status: 'PENDING',
+      type: 'ONCHAIN',
+      source: 'api.deposits',
+      metadata: data.metadata || {},
+      createdAt: now,
+      updatedAt: now
+    };
+    await adminDeposits.insertOne(doc);
+    return doc;
+  }
+
   async function reviewDeposit(depositId, decision, reason, actor = {}) {
     const normalizedDepositId = String(depositId || '').trim();
     if (!normalizedDepositId) {
@@ -2342,6 +2368,7 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     getWalletOverview,
     listDeposits,
     listUserDeposits,
+    createDepositRequest,
     reviewDeposit,
     listWithdrawals,
     createWithdrawalRequest,
