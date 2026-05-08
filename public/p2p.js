@@ -7604,12 +7604,15 @@ function submitKycBasicAndNext() {
     return;
   }
   window.__p2pKycStepBusy = Date.now();
-  var name  = ((document.getElementById('kycFullName')||{}).value||'').trim();
-  var dob   = ((document.getElementById('kycDob')||{}).value||'').trim();
-  var phone = ((document.getElementById('kycPhone')||{}).value||'').trim();
-  if(!name)  { _kycHint('kycBasicHint','Please enter your full name.','error'); return; }
-  if(!dob)   { _kycHint('kycBasicHint','Please enter your date of birth.','error'); return; }
-  if(!phone) { _kycHint('kycBasicHint','Please enter your phone number.','error'); return; }
+  var name   = ((document.getElementById('kycFullName')||{}).value||'').trim();
+  var idType = ((document.getElementById('kycIdType')||{}).value||'').trim();
+  var dob    = ((document.getElementById('kycDob')||{}).value||'').trim();
+  var phone  = ((document.getElementById('kycPhone')||{}).value||'').trim();
+  if(!name)   { _kycHint('kycBasicHint','Please enter your full name.','error'); return; }
+  if(!idType) { _kycHint('kycBasicHint','Please select your ID type.','error'); return; }
+  if(!dob)    { _kycHint('kycBasicHint','Please enter your date of birth.','error'); return; }
+  if(!phone)  { _kycHint('kycBasicHint','Please enter your phone number.','error'); return; }
+  window._kycSelectedIdType = idType;
   // Update badge
   var badge = document.getElementById('kycStatusBadge');
   if(badge){ badge.textContent='Lv.1 Done'; badge.style.cssText='font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(22,199,132,0.15);border:1px solid rgba(22,199,132,0.35);color:#16c784;margin-left:6px;'; }
@@ -7968,7 +7971,7 @@ window.deleteMobAd = async function(offerId) {
     else if (hash === 'withdraw') { setTimeout(function(){ if(typeof openWithdrawModal==='function') openWithdrawModal(); }, 400); }
     else if (hash === 'support') { setTimeout(function(){ showMobScreen('mobSupportScreen'); }, 200); }
     else if (hash === 'transfer') { setTimeout(function(){ var t = document.querySelector('.gt-side-tab[data-side="buy"],.side-tab[data-side="buy"]'); if(t) t.click(); }, 200); }
-    else if (hash === 'kyc') { setTimeout(function(){ setKycModalOpen(true, { hintText: 'Complete KYC to unlock withdrawals.' }); }, 600); }
+    else if (hash === 'kyc') { setTimeout(function(){ openKycScreen(); }, 400); }
   })();
 
   // Unified click handler — nav tabs + back + KYC actions

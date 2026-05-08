@@ -1145,7 +1145,7 @@
     </div>
 
     <!-- KYC modal -->
-    <section id="kycModal" class="p2p-kyc-modal hidden" aria-hidden="true">
+    <section id="kycModal" class="p2p-kyc-modal hidden" aria-hidden="true" style="display:none!important">
       <div id="kycBackdrop" class="p2p-kyc-backdrop"></div>
       <div class="p2p-kyc-panel" role="dialog" aria-modal="true" aria-labelledby="kycTitle">
         <div class="p2p-kyc-head">
@@ -1464,7 +1464,17 @@
         <div class="mob-kyc-fp-form">
           <div class="mob-kyc-fp-field">
             <label class="mob-kyc-fp-label">Full Name</label>
-            <input id="kycFullName" type="text" class="mob-kyc-fp-input" placeholder="As on Aadhaar / Passport" autocomplete="name"/>
+            <input id="kycFullName" type="text" class="mob-kyc-fp-input" placeholder="As on Aadhaar / Passport" autocomplete="name" enterkeyhint="next"/>
+          </div>
+          <div class="mob-kyc-fp-field">
+            <label class="mob-kyc-fp-label">ID Type</label>
+            <select id="kycIdType" class="mob-kyc-fp-input">
+              <option value="">Select ID Type</option>
+              <option value="aadhaar">Aadhaar Card</option>
+              <option value="passport">Passport</option>
+              <option value="driving_license">Driving License</option>
+              <option value="voter_id">Voter ID</option>
+            </select>
           </div>
           <div class="mob-kyc-fp-field">
             <label class="mob-kyc-fp-label">Date of Birth</label>
