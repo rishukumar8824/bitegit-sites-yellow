@@ -913,11 +913,11 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     // Fallback: if no profile entry, derive email from p2pCredentials by matching derived userId
     let credential = email ? await p2pCredentials.findOne({ email }) : null;
     if (!email) {
-      const allCreds = await p2pCredentials.find({}, { projection: { email: 1, role: 1 } }).toArray();
+      const allCreds = await p2pCredentials.find({}, { projection: { email: 1 } }).toArray();
       const matched = allCreds.find(c => makeP2PUserId(String(c.email || '').trim().toLowerCase()) === normalizedUserId);
       if (matched) {
         email = String(matched.email || '').trim().toLowerCase();
-        credential = matched;
+        credential = await p2pCredentials.findOne({ email });
       }
     }
     const wallet = await wallets.findOne({ userId: normalizedUserId });
