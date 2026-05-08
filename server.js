@@ -2222,13 +2222,6 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
     }
     const currentKyc = buildP2PKycProfileFromCredential(currentCredential || {});
 
-    if (currentKyc.status === 'VERIFIED') {
-      return res.json({
-        message: 'KYC is already verified for this account.',
-        kyc: currentKyc
-      });
-    }
-
     const requestId = createKycRequestId();
     const submittedAt = new Date();
     const faceMatch = await runKycFaceMatch({
