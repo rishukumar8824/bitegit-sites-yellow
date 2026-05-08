@@ -3252,6 +3252,8 @@ body.coinflare-page.cf-chart-open .cf-signup-link {
     border: 1.5px solid rgba(0,184,212,0.5) !important;
     color: #00b8d4 !important;
     background: transparent !important;
+    padding-top: 5px;
+    padding-bottom: 0px;
   }
 
   .cf-actions .cf-signup {
