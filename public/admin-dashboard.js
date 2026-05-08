@@ -211,7 +211,7 @@ function _hideRestartOverlay() {
 
 async function _tryRefreshAdminToken() {
   if (_adminRefreshInFlight) return _adminRefreshInFlight;
-  _adminRefreshInFlight = fetch(`${API_BASE}/admin/auth/refresh`, {
+  _adminRefreshInFlight = fetch(`${API_BASE}/auth/refresh`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' }
@@ -260,7 +260,7 @@ async function apiRequest(path, options = {}, _retried = false) {
       while (Date.now() < _serverRestartDeadline) {
         await _sleep(4000);
         try {
-          const retryResp = await fetch(`${API_BASE}/admin/auth/refresh`, {
+          const retryResp = await fetch(`${API_BASE}/auth/refresh`, {
             method: 'POST', credentials: 'include',
             headers: { 'Content-Type': 'application/json' }
           });
@@ -2732,8 +2732,8 @@ async function loadUpKyc() {
 
     const kycStatus = kycData.kycStatus || kycData.status || 'NOT_SUBMITTED';
     const remarks   = kycData.remarks   || kycData.kycRemarks || '';
-    const isPending = kycStatus === 'PENDING';
-    const isApproved = kycStatus === 'APPROVED';
+    const isPending = kycStatus === 'PENDING' || kycStatus === 'PENDING_REVIEW';
+    const isApproved = kycStatus === 'APPROVED' || kycStatus === 'VERIFIED';
 
     const doc        = (docData && !docData._error) ? docData : {};
     const docError   = docData?._error || null;

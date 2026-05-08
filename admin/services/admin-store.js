@@ -1150,7 +1150,7 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       { upsert: true }
     );
 
-    // Sync p2p_credentials — find email from multiple sources then update by email (primary key)
+    // Sync p2p_credentials — update directly by userId (indexed), then also by email if found
     try {
       const now = new Date();
       const kycPatch = {
@@ -1172,25 +1172,28 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
         kycPatch.kycRejectionReason = '';
       }
 
-      // Try all sources to get email, then update by email (primary key of p2pCredentials)
-      let credEmail = String(existingProfile?.email || '').trim().toLowerCase();
-      if (!credEmail) {
-        const kycReq = await p2pKycRequests.findOne({ userId: normalizedUserId }, { projection: { email: 1 } });
-        if (kycReq?.email) credEmail = String(kycReq.email).trim().toLowerCase();
-      }
-      if (!credEmail) {
-        const credByUserId = await p2pCredentials.findOne({ userId: normalizedUserId }, { projection: { email: 1 } });
-        if (credByUserId?.email) credEmail = String(credByUserId.email).trim().toLowerCase();
+      // Primary: update by userId (always present and indexed in p2pCredentials)
+      const byUserId = await p2pCredentials.updateOne({ userId: normalizedUserId }, { $set: kycPatch });
+      console.log('[reviewKyc] p2pCredentials by userId:', normalizedUserId, '→', kycPatch.kycStatus, 'matched:', byUserId.matchedCount);
+
+      // If userId didn't match, try by email as fallback
+      if (!byUserId.matchedCount) {
+        let credEmail = String(existingProfile?.email || '').trim().toLowerCase();
+        if (!credEmail) {
+          const kycReq = await p2pKycRequests.findOne({ userId: normalizedUserId }, { projection: { email: 1 } });
+          if (kycReq?.email) credEmail = String(kycReq.email).trim().toLowerCase();
+        }
+        if (credEmail) {
+          const byEmail = await p2pCredentials.updateOne({ email: credEmail }, { $set: kycPatch });
+          console.log('[reviewKyc] p2pCredentials by email:', credEmail, '→', kycPatch.kycStatus, 'matched:', byEmail.matchedCount);
+        }
       }
 
-      if (credEmail) {
-        const result = await p2pCredentials.updateOne({ email: credEmail }, { $set: kycPatch });
-        console.log('[reviewKyc] p2pCredentials updated for', credEmail, '→', kycPatch.kycStatus, 'matched:', result.matchedCount);
-      } else {
-        // Last resort: update by userId field
-        await p2pCredentials.updateOne({ userId: normalizedUserId }, { $set: kycPatch });
-        console.warn('[reviewKyc] updated p2pCredentials by userId fallback for', normalizedUserId);
-      }
+      // Also sync p2pKycRequests status
+      await p2pKycRequests.updateOne(
+        { userId: normalizedUserId },
+        { $set: { status: kycPatch.kycStatus, reviewedAt: now, updatedAt: now } }
+      ).catch(() => {});
     } catch (syncErr) {
       console.error('[reviewKyc] failed to sync p2p_credentials:', syncErr?.message);
     }
