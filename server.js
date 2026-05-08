@@ -5197,8 +5197,106 @@ app.get('/chart.html', (req, res) => {
 app.get('/auth', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'auth.html'));
 });
+
+// Embed version of auth — no header/hamburger/drawer for Byit iframe
+app.get('/auth-embed', (req, res) => {
+  const fs = require('fs');
+  const qs = require('querystring');
+  let html = fs.readFileSync(path.join(__dirname, 'public', 'auth.html'), 'utf8');
+  // Pass through redirect param
+  const redirect = req.query.redirect || '/p2p-embed';
+  html = html.replace('</head>',
+    `<style>
+      .auth-topbar, header.auth-topbar,
+      #authMenuToggle, .auth-icon-btn,
+      .auth-brand, a.auth-brand,
+      #authNavDrawer, #authNavOverlay,
+      .auth-nav-drawer, .auth-nav-overlay,
+      .auth-nav-head, .auth-nav-links {
+        display: none !important;
+      }
+      .auth-main { padding-top: 0 !important; }
+    </style>
+    <script>
+      // After login/signup success, stay in embed context
+      window._embedRedirect = ${JSON.stringify(redirect)};
+    </script>
+    </head>`);
+  // After login success, redirect back to p2p-embed not /p2p
+  html = html.replace(/window\.location\.href\s*=\s*['"]\/p2p['"]/g, `window.location.href = '/p2p-embed'`);
+  html = html.replace(/window\.location\.replace\s*\(\s*['"]\/p2p['"]\s*\)/g, `window.location.replace('/p2p-embed')`);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
 app.get('/p2p', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'p2p.html'));
+});
+
+// Embed version — strips main header and desktop subnav so Byit app can iframe it cleanly
+app.get('/p2p-embed', (req, res) => {
+  const fs = require('fs');
+  let html = fs.readFileSync(path.join(__dirname, 'public', 'p2p.html'), 'utf8');
+  // Remove the main BITEGIT header
+  html = html.replace(/<header class="p2p-header"[\s\S]*?<\/header>/m, '');
+  // Remove the desktop subnav (Orders/My Ads/Profile tabs only shown on desktop)
+  html = html.replace(/<nav class="p2p-subnav"[\s\S]*?<\/nav>/m, '');
+  // Remove has-mobile-nav body class and mobile-nav css
+  html = html.replace('has-mobile-nav', '');
+  html = html.replace(/<link[^>]*mobile-nav\.css[^>]*>/g, '');
+  // Remove mobile nav drawer (has BITEGIT brand + hamburger links)
+  html = html.replace(/<div id="p2pNavOverlay"[\s\S]*?<\/aside>/m, '');
+  // Remove the auth modal's internal header/brand if present
+  html = html.replace(/<link[^>]*mobile-nav\.css[^>]*>/g, '');
+  // Hide via CSS: any leftover brand, hamburger, drawer, mobile nav bar, auth modal header
+  html = html.replace('</head>',
+    `<style>
+      .cf-mobile-nav,.mobile-nav-bar,[data-mobile-nav],
+      .p2p-header,.p2p-subnav,.p2p-nav-drawer,.p2p-nav-overlay,
+      .p2p-hamburger,.p2p-brand,.p2p-brand-wrap,
+      #p2pHeader,#p2pNavDrawer,#p2pNavOverlay,#p2pMenuToggle,
+      .p2p-drawer-head,.p2p-drawer-links,.p2p-drawer-actions,
+      .auth-topbar,.auth-brand,.auth-icon-btn,#authMenuToggle,
+      .auth-nav-drawer,.auth-nav-overlay,.auth-nav-head,.auth-nav-links {
+        display:none!important;
+      }
+    </style>
+    <script>
+      // Intercept all iframe navigations to /auth → redirect to /auth-embed
+      (function() {
+        var _push = history.pushState;
+        var _replace = history.replaceState;
+        function fixUrl(url) {
+          if (!url) return url;
+          var s = String(url);
+          if (s.startsWith('/auth') && !s.startsWith('/auth-embed')) {
+            return s.replace(/^\/auth/, '/auth-embed');
+          }
+          return s;
+        }
+        history.pushState = function(a,b,url) { return _push.call(this,a,b,fixUrl(url)); };
+        history.replaceState = function(a,b,url) { return _replace.call(this,a,b,fixUrl(url)); };
+        document.addEventListener('click', function(e) {
+          var a = e.target.closest('a[href]');
+          if (a) {
+            var href = a.getAttribute('href');
+            if (href && href.startsWith('/auth') && !href.startsWith('/auth-embed')) {
+              e.preventDefault();
+              window.location.href = href.replace(/^\/auth/, '/auth-embed');
+            }
+          }
+        }, true);
+        // Override window.location.href assignments that p2p.js might do
+        var origAssign = window.location.assign.bind(window.location);
+        window.location.assign = function(url) {
+          if (url && String(url).startsWith('/auth') && !String(url).startsWith('/auth-embed'))
+            url = String(url).replace(/^\/auth/, '/auth-embed');
+          origAssign(url);
+        };
+      })();
+    </script>
+    </head>`);
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
 });
 
 app.get('/p2p-order-flow', (req, res) => {

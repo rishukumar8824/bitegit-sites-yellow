@@ -1848,6 +1848,14 @@
     var net = WD_NETWORKS[currentWdNetwork];
     if(!addr) { showToast('Please enter withdrawal address'); return; }
     if(!amt || amt < net.min) { showToast('Minimum withdrawal is ' + net.min + ' USDT'); return; }
+    // KYC mandatory for withdrawal
+    var kycSt = (typeof currentUser !== 'undefined' && currentUser && currentUser.kyc)
+      ? (currentUser.kyc.status || '').toLowerCase() : '';
+    if (kycSt !== 'verified' && kycSt !== 'approved') {
+      showToast('KYC verification required to withdraw. Please complete KYC first.');
+      setTimeout(function() { showScreen('screenKyc'); }, 1200);
+      return;
+    }
     // Store for confirm modal
     _pendingWithdraw = { addr:addr, amt:amt, net:net, netKey:currentWdNetwork };
     // Populate confirm modal

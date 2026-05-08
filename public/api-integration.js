@@ -287,8 +287,8 @@ function updateProfileUI() {
   var kycMv = document.querySelector('#go-kyc .mv');
   if (kycMv && currentUser.kyc) {
     var kst = (currentUser.kyc.status || 'not_submitted').toLowerCase();
-    kycMv.innerHTML = (kst === 'approved' ? '<span style="color:#0ecb81">✓ Verified</span>' :
-                       kst === 'pending'  ? '<span style="color:#f0b90b">Under Review</span>' :
+    kycMv.innerHTML = ((kst === 'approved' || kst === 'verified') ? '<span style="color:#0ecb81">✓ Verified</span>' :
+                       (kst === 'pending' || kst === 'pending_review') ? '<span style="color:#f0b90b">Under Review</span>' :
                        kst === 'rejected' ? '<span style="color:#f6465d">Rejected</span>' :
                        'Not Verified') +
       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>';
@@ -545,13 +545,16 @@ async function loadKycStatus() {
   var badge = document.getElementById('kyc-status-badge');
   if (badge) {
     var st = (data.status || 'not_submitted').toLowerCase();
-    badge.textContent = st === 'approved' ? 'Verified ✓' : st === 'pending' ? 'Under Review' : st === 'rejected' ? 'Rejected' : 'Not Submitted';
-    badge.style.color = st === 'approved' ? '#0ecb81' : st === 'rejected' ? '#f6465d' : '#f0b90b';
+    var isVerified = (st === 'approved' || st === 'verified');
+    var isPending  = (st === 'pending'  || st === 'pending_review');
+    badge.textContent = isVerified ? 'Verified ✓' : isPending ? 'Under Review' : st === 'rejected' ? 'Rejected' : 'Not Submitted';
+    badge.style.color = isVerified ? '#0ecb81' : st === 'rejected' ? '#f6465d' : '#f0b90b';
   }
   // Show verified tick in profile
   var verBadge = document.getElementById('uc-kyc-badge');
   if (verBadge) {
-    verBadge.style.display = (data.status === 'approved') ? 'inline-flex' : 'none';
+    var stRaw = (data.status || '').toLowerCase();
+    verBadge.style.display = (stRaw === 'approved' || stRaw === 'verified') ? 'inline-flex' : 'none';
   }
 }
 

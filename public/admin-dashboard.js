@@ -3553,6 +3553,7 @@ function showDepositNotification(info) {
 function showNewUserNotification(info) {
   const email = info.email || 'Unknown';
   const username = info.username || email.split('@')[0];
+  addNotif('user', 'New User Registered', `${username} (${email}) just signed up`);
   const n = document.createElement('div');
   n.style.cssText = `position:fixed;top:18px;right:18px;z-index:9999;
     background:var(--bg-card);border:1px solid #22c55e;border-radius:14px;
@@ -3649,8 +3650,8 @@ function renderNotifPanel() {
     return;
   }
   if (empty) empty.style.display = 'none';
-  var icons = { withdrawal:'💸', deposit:'⬇️', kyc:'🪪', support:'💬', system:'⚙️' };
-  var colors = { withdrawal:'#f6465d', deposit:'#0ecb81', kyc:'#f0b90b', support:'#00b8d4', system:'#a78bfa' };
+  var icons = { withdrawal:'💸', deposit:'⬇️', kyc:'🪪', support:'💬', system:'⚙️', user:'👤' };
+  var colors = { withdrawal:'#f6465d', deposit:'#0ecb81', kyc:'#f0b90b', support:'#00b8d4', system:'#a78bfa', user:'#22c55e' };
   list.innerHTML = _notifs.map(function(n, i) {
     var ic = icons[n.type] || '🔔';
     var cl = colors[n.type] || '#fff';
@@ -3671,6 +3672,7 @@ function handleNotifClick(type) {
   else if (type === 'kyc') showPanel('kyc');
   else if (type === 'support') showPanel('notifications');
   else if (type === 'deposit') showPanel('wallet');
+  else if (type === 'user') changeView('users');
 }
 
 // Poll for new alerts every 30s
