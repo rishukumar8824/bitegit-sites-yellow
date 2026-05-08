@@ -191,6 +191,24 @@ function setActionButtonLoading(button, loading, loadingText = 'Processing...') 
 }
 
 let _adminRefreshInFlight = null;
+let _serverRestartOverlay = null;
+let _serverRestartDeadline = 0;
+
+function _showRestartOverlay() {
+  if (_serverRestartOverlay) return;
+  _serverRestartOverlay = document.createElement('div');
+  _serverRestartOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,12,24,0.92);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;';
+  _serverRestartOverlay.innerHTML = `
+    <div style="width:40px;height:40px;border:3px solid rgba(0,184,212,0.2);border-top-color:#00b8d4;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+    <div style="color:#e2e8f0;font-size:15px;font-weight:600;">Server is restarting after deploy…</div>
+    <div style="color:#848e9c;font-size:12px;">Reconnecting automatically, please wait.</div>`;
+  document.body.appendChild(_serverRestartOverlay);
+}
+
+function _hideRestartOverlay() {
+  if (_serverRestartOverlay) { document.body.removeChild(_serverRestartOverlay); _serverRestartOverlay = null; }
+}
+
 async function _tryRefreshAdminToken() {
   if (_adminRefreshInFlight) return _adminRefreshInFlight;
   _adminRefreshInFlight = fetch(`${API_BASE}/admin/auth/refresh`, {
@@ -207,25 +225,60 @@ async function _tryRefreshAdminToken() {
   return _adminRefreshInFlight;
 }
 
-async function apiRequest(path, options = {}, _retried = false) {
-  const response = await fetch(`${API_BASE}${path}`, {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {})
-    },
-    ...options
-  });
+function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  if (response.status === 401) {
+async function apiRequest(path, options = {}, _retried = false) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      ...options
+    });
+  } catch (_netErr) {
+    // Network error — server might be restarting
+    if (!_retried) {
+      _showRestartOverlay();
+      _serverRestartDeadline = Date.now() + 45000;
+      await _sleep(4000);
+      _hideRestartOverlay();
+      return apiRequest(path, options, true);
+    }
+    window.location.href = '/admin/login';
+    throw new Error('Network error');
+  }
+
+  if (response.status === 401 || response.status === 503) {
     if (!_retried && !path.includes('/auth/refresh')) {
+      // First try token refresh
       const refreshed = await _tryRefreshAdminToken();
-      if (refreshed) return apiRequest(path, options, true);
+      if (refreshed) { _hideRestartOverlay(); return apiRequest(path, options, true); }
+
+      // Refresh also failed — server may be restarting, wait and retry for up to 45s
+      _showRestartOverlay();
+      _serverRestartDeadline = Date.now() + 45000;
+      while (Date.now() < _serverRestartDeadline) {
+        await _sleep(4000);
+        try {
+          const retryResp = await fetch(`${API_BASE}/admin/auth/refresh`, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          if (retryResp.ok) {
+            _hideRestartOverlay();
+            return apiRequest(path, options, true);
+          }
+          // 401 means server is up but token is genuinely invalid — stop waiting
+          if (retryResp.status === 401) break;
+        } catch (_) { /* server still down, keep waiting */ }
+      }
+      _hideRestartOverlay();
     }
     window.location.href = '/admin/login';
     throw new Error('Unauthorized');
   }
 
+  _hideRestartOverlay();
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   const isJson = contentType.includes('application/json');
   const payload = isJson ? await response.json().catch(() => ({})) : await response.text();
