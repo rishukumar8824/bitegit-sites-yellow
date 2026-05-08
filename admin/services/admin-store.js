@@ -845,7 +845,7 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     const requiresPostFilter = Boolean(userIdQuery || normalizedStatusFilter || kycStatusQuery);
     const baseCursor = p2pCredentials
       .find(query, { projection: { email: 1, role: 1, updatedAt: 1, createdAt: 1, lastActiveAt: 1 } })
-      .sort({ updatedAt: -1 });
+      .sort({ createdAt: -1 });
 
     const credentials = requiresPostFilter
       ? await baseCursor.toArray()
