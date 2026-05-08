@@ -1125,40 +1125,35 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       throw new Error('Invalid KYC decision');
     }
 
-    const existingProfile = await adminUserProfiles.findOne({ userId: normalizedUserId });
-    await upsertUserProfile(normalizedUserId, existingProfile?.email || '', {
-      status: existingProfile?.status || 'ACTIVE',
-      kycStatus: normalizedDecision,
-      kycRemarks: String(remarks || '')
-    });
-
-    await adminKycDocuments.updateOne(
-      { userId: normalizedUserId },
-      {
-        $set: {
-          reviewDecision: normalizedDecision,
-          reviewRemarks: String(remarks || ''),
-          reviewedAt: new Date(),
-          updatedAt: new Date()
-        },
-        $setOnInsert: {
-          userId: normalizedUserId,
-          documents: [],
-          createdAt: new Date()
-        }
-      },
-      { upsert: true }
-    );
-
-    // Sync p2p_credentials — find the actual document first, then update by _id (guaranteed match)
     const now = new Date();
-    const kycPatch = {
-      kycStatus: normalizedDecision === 'APPROVED' ? 'VERIFIED'
-               : normalizedDecision === 'PENDING'  ? 'PENDING_REVIEW'
-               : normalizedDecision,
-      kycUpdatedAt: now,
-      updatedAt: now
-    };
+
+    // Step 1: Find the p2pCredentials doc (this is the source of truth for user-side KYC status)
+    const credDoc = await p2pCredentials.findOne(
+      { userId: normalizedUserId },
+      { projection: { _id: 1, email: 1, userId: 1, kycStatus: 1 } }
+    );
+    console.log('[reviewKyc] Step1 findOne userId:', normalizedUserId, '→ found:', credDoc ? credDoc.email : 'NULL');
+
+    // If not found by userId, try via adminUserProfiles email
+    let resolvedCredDoc = credDoc;
+    if (!resolvedCredDoc) {
+      const profile = await adminUserProfiles.findOne({ userId: normalizedUserId });
+      const profileEmail = String(profile?.email || '').trim().toLowerCase();
+      console.log('[reviewKyc] Step1b profile email:', profileEmail);
+      if (profileEmail) {
+        resolvedCredDoc = await p2pCredentials.findOne(
+          { email: profileEmail },
+          { projection: { _id: 1, email: 1, userId: 1, kycStatus: 1 } }
+        );
+        console.log('[reviewKyc] Step1b findOne email:', profileEmail, '→ found:', resolvedCredDoc ? 'YES' : 'NULL');
+      }
+    }
+
+    // Step 2: Build the KYC patch
+    const userFacingStatus = normalizedDecision === 'APPROVED' ? 'VERIFIED'
+                           : normalizedDecision === 'PENDING'  ? 'PENDING_REVIEW'
+                           : normalizedDecision;
+    const kycPatch = { kycStatus: userFacingStatus, kycUpdatedAt: now, updatedAt: now };
     if (normalizedDecision === 'REJECTED') {
       kycPatch.kycRejectedAt = now;
       kycPatch.kycVerifiedAt = null;
@@ -1171,35 +1166,47 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       kycPatch.kycRejectionReason = '';
     }
 
-    try {
-      // Build all possible query conditions for this user
-      const orConditions = [{ userId: normalizedUserId }];
-      const profileEmail = String(existingProfile?.email || '').trim().toLowerCase();
-      if (profileEmail) orConditions.push({ email: profileEmail });
-
-      // Find the actual p2pCredentials document
-      const credDoc = await p2pCredentials.findOne(
-        orConditions.length > 1 ? { $or: orConditions } : orConditions[0],
-        { projection: { _id: 1, email: 1, userId: 1 } }
-      );
-
-      if (credDoc) {
-        // Update by _id — 100% guaranteed match
-        const result = await p2pCredentials.updateOne({ _id: credDoc._id }, { $set: kycPatch });
-        console.log('[reviewKyc] p2pCredentials updated _id:', credDoc._id, 'email:', credDoc.email, '→', kycPatch.kycStatus, 'matched:', result.matchedCount);
-      } else {
-        console.warn('[reviewKyc] NO p2pCredentials found for userId:', normalizedUserId, 'email:', profileEmail);
+    // Step 3: Update p2pCredentials by _id (MUST succeed — this is what user reads)
+    if (resolvedCredDoc) {
+      const result = await p2pCredentials.updateOne({ _id: resolvedCredDoc._id }, { $set: kycPatch });
+      console.log('[reviewKyc] Step3 p2pCredentials UPDATED _id:', resolvedCredDoc._id, 'email:', resolvedCredDoc.email, 'old:', resolvedCredDoc.kycStatus, '→ new:', userFacingStatus, 'matched:', result.matchedCount, 'modified:', result.modifiedCount);
+      if (!result.matchedCount) {
+        console.error('[reviewKyc] CRITICAL: _id update matched 0 — this should never happen');
       }
-
-      // Also sync p2pKycRequests status
-      await p2pKycRequests.updateOne(
-        { $or: [{ userId: normalizedUserId }, ...(profileEmail ? [{ email: profileEmail }] : [])] },
-        { $set: { status: kycPatch.kycStatus, reviewedAt: now, updatedAt: now } }
-      ).catch(() => {});
-    } catch (syncErr) {
-      console.error('[reviewKyc] failed to sync p2p_credentials:', syncErr?.message);
+    } else {
+      console.error('[reviewKyc] CRITICAL: no p2pCredentials doc found at all for userId:', normalizedUserId);
     }
 
+    // Step 4: Update adminUserProfiles (admin panel reads this)
+    const credEmail = String(resolvedCredDoc?.email || '').trim().toLowerCase();
+    await upsertUserProfile(normalizedUserId, credEmail, {
+      status: 'ACTIVE',
+      kycStatus: normalizedDecision,
+      kycRemarks: String(remarks || '')
+    });
+
+    // Step 5: Update adminKycDocuments
+    await adminKycDocuments.updateOne(
+      { userId: normalizedUserId },
+      {
+        $set: {
+          reviewDecision: normalizedDecision,
+          reviewRemarks: String(remarks || ''),
+          reviewedAt: now,
+          updatedAt: now
+        },
+        $setOnInsert: { userId: normalizedUserId, documents: [], createdAt: now }
+      },
+      { upsert: true }
+    );
+
+    // Step 6: Sync p2pKycRequests
+    await p2pKycRequests.updateOne(
+      { userId: normalizedUserId },
+      { $set: { status: userFacingStatus, reviewedAt: now, updatedAt: now } }
+    ).catch(() => {});
+
+    console.log('[reviewKyc] DONE userId:', normalizedUserId, 'decision:', normalizedDecision, '→ userFacing:', userFacingStatus);
     return getUserKyc(normalizedUserId);
   }
 

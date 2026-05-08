@@ -255,6 +255,15 @@ function registerAdminRoutes(app, deps) {
   router.post('/users/:userId/reset-password', protect(ROLE_GROUPS.SUPER), withLogging({ module: 'users', action: 'reset_user_password' }, adminControllers.resetUserPassword));
   router.post('/users/:userId/adjust-balance', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'users', action: 'adjust_user_balance' }, adminControllers.adjustUserBalance));
   router.get('/users/:userId/kyc', protect(ROLE_GROUPS.ALL), withLogging({ module: 'users', action: 'get_user_kyc' }, adminControllers.getUserKyc));
+  router.get('/users/:userId/kyc/debug', protect(ROLE_GROUPS.ALL), async (req, res) => {
+    const userId = safeString(req.params.userId);
+    if (!userId) return res.status(400).json({ message: 'userId required' });
+    const credByUserId = await collections.p2pCredentials.findOne({ userId }, { projection: { passwordHash: 0 } });
+    const profile = await collections.adminUserProfiles.findOne({ userId });
+    const kycReq = await collections.p2pKycRequests.findOne({ userId }, { projection: { aadhaarFrontImage: 0, aadhaarBackImage: 0, selfieWithDocumentImage: 0 } });
+    const kycDoc = await collections.adminKycDocuments.findOne({ userId }, { projection: { documents: 0 } });
+    return res.json({ userId, p2pCredentials: credByUserId, adminUserProfile: profile, p2pKycRequest: kycReq, adminKycDocument: kycDoc });
+  });
   router.get(
     '/users/:userId/kyc/documents',
     protect(ROLE_GROUPS.COMPLIANCE),
