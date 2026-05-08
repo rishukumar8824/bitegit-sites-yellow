@@ -611,6 +611,13 @@
     <div style="font-size:.75rem;color:#8a9bb5;margin-top:.55rem">Upload screenshot of your transfer to speed up verification</div>
   </div>
 
+  <!-- Amount input -->
+  <div style="margin:.75rem 1rem 0;background:#111;border-radius:14px;padding:.85rem 1rem">
+    <div style="font-size:.78rem;color:#8a9bb5;margin-bottom:.45rem">Amount (USDT) <span style="color:#f6465d">*</span></div>
+    <input id="depAmountInput" type="number" placeholder="Enter amount you sent" min="0.01" step="any"
+      style="width:100%;background:none;border:none;outline:none;color:#fff;font-size:.9rem;font-family:inherit"/>
+  </div>
+
   <!-- TxID input -->
   <div style="margin:.75rem 1rem 0;background:#111;border-radius:14px;padding:.85rem 1rem">
     <div style="font-size:.78rem;color:#8a9bb5;margin-bottom:.45rem">Transaction ID (TxID) — Optional</div>
@@ -620,7 +627,7 @@
 
   <!-- Submit Button -->
   <div style="padding:.85rem 1rem 0">
-    <button onclick="depSubmitProof()" style="width:100%;padding:.9rem;background:#00b8d4;border:none;border-radius:50px;font-size:1rem;font-weight:700;color:#000;cursor:pointer;font-family:inherit">
+    <button id="depSubmitBtn" onclick="depSubmitProof()" style="width:100%;padding:.9rem;background:#00b8d4;border:none;border-radius:50px;font-size:1rem;font-weight:700;color:#000;cursor:pointer;font-family:inherit">
       Submit Deposit Proof
     </button>
   </div>
@@ -1515,17 +1522,61 @@
     document.getElementById('depScreenshotRemove').style.display = 'none';
   }
 
-  function depSubmitProof() {
-    var hasImg = document.getElementById('depScreenshotPreview').src && document.getElementById('depScreenshotPreview').style.display !== 'none';
+  async function depSubmitProof() {
+    var amountVal = parseFloat(document.getElementById('depAmountInput').value.trim());
     var txid = document.getElementById('depTxidInput').value.trim();
-    if(!hasImg && !txid) {
+    var previewEl = document.getElementById('depScreenshotPreview');
+    var hasImg = previewEl.src && previewEl.style.display !== 'none';
+
+    if (!amountVal || amountVal <= 0) {
+      showToast('Please enter the amount you sent');
+      return;
+    }
+    if (!hasImg && !txid) {
       showToast('Please upload a screenshot or enter TxID');
       return;
     }
-    // Show success state
-    showToast('Deposit proof submitted! We\'ll verify shortly.');
-    depRemoveScreenshot({stopPropagation:function(){}});
-    document.getElementById('depTxidInput').value = '';
+
+    var btn = document.getElementById('depSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    try {
+      var proofUrl = hasImg ? previewEl.src : '';
+      var address = document.getElementById('depAddress').textContent.trim();
+
+      var body = {
+        coin: 'USDT',
+        network: currentNetwork,
+        address: address,
+        amount: amountVal,
+        txHash: txid,
+        proofUrl: proofUrl
+      };
+
+      var res = await fetch('/api/deposits', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      var data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.message || 'Submission failed. Try again.');
+        return;
+      }
+
+      showToast('Deposit submitted! Admin will verify shortly.');
+      depRemoveScreenshot({ stopPropagation: function(){} });
+      document.getElementById('depTxidInput').value = '';
+      document.getElementById('depAmountInput').value = '';
+    } catch(e) {
+      showToast('Network error. Please try again.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Submit Deposit Proof';
+    }
   }
 
   function saveOrShareAddress() {
