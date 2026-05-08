@@ -7567,27 +7567,69 @@ function _openKycMobScreen(id) {
   document.body.dataset.mobileTab = 'kyc';
 }
 
-function openKycScreen() {
+var _kycPollTimer = null;
+
+function _renderKycScreenForStatus() {
   var kycStatus = normalizeKycStatus(currentUser && currentUser.kyc && currentUser.kyc.status);
   if (kycStatus === 'PENDING_REVIEW') {
     _openKycMobScreen('kycUnderReviewScreen');
+    document.getElementById('kycRejectedScreen') && (document.getElementById('kycRejectedScreen').style.display = 'none');
+    _startKycPoll();
     return;
   }
   if (kycStatus === 'REJECTED') {
-    var rejScreen = document.getElementById('kycRejectedScreen');
+    _stopKycPoll();
     var rejReasonText = document.getElementById('kycRejectionReasonText');
-    var rejReasonBox = document.getElementById('kycRejectionReasonBox');
-    var rejReason = currentUser && currentUser.kyc && currentUser.kyc.rejectionReason || '';
+    var rejReasonBox  = document.getElementById('kycRejectionReasonBox');
+    var rejReason = (currentUser && currentUser.kyc && currentUser.kyc.rejectionReason) || '';
     if (rejReasonText) rejReasonText.textContent = rejReason || 'No specific reason provided.';
-    if (rejReasonBox) rejReasonBox.style.display = rejReason ? '' : 'none';
+    if (rejReasonBox)  rejReasonBox.style.display  = rejReason ? '' : 'none';
+    document.getElementById('kycUnderReviewScreen') && (document.getElementById('kycUnderReviewScreen').style.display = 'none');
     _openKycMobScreen('kycRejectedScreen');
     return;
   }
-  if (kycStatus === 'VERIFIED') return;
+  if (kycStatus === 'VERIFIED') { _stopKycPoll(); closeKycScreens(); return; }
+  _stopKycPoll();
   _openKycMobScreen('kycBasicScreen');
 }
 
+function _startKycPoll() {
+  if (_kycPollTimer) return;
+  _kycPollTimer = setInterval(function() {
+    if (!document.getElementById('kycUnderReviewScreen') ||
+        document.getElementById('kycUnderReviewScreen').style.display === 'none') {
+      _stopKycPoll(); return;
+    }
+    fetch('/api/p2p/kyc/status', { credentials: 'include', headers: buildP2PAuthHeaders() })
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if (!data || !data.kyc) return;
+        var fresh = normalizeKycStatus(data.kyc.status);
+        if (fresh !== normalizeKycStatus(currentUser && currentUser.kyc && currentUser.kyc.status)) {
+          updateCurrentUserKyc(data.kyc);
+          _renderKycScreenForStatus();
+        }
+      }).catch(function(){});
+  }, 8000);
+}
+
+function _stopKycPoll() {
+  if (_kycPollTimer) { clearInterval(_kycPollTimer); _kycPollTimer = null; }
+}
+
+function openKycScreen() {
+  // Always fetch fresh status before deciding which screen to show
+  fetch('/api/p2p/kyc/status', { credentials: 'include', headers: buildP2PAuthHeaders() })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data && data.kyc) updateCurrentUserKyc(data.kyc);
+      _renderKycScreenForStatus();
+    })
+    .catch(function() { _renderKycScreenForStatus(); });
+}
+
 function closeKycScreens() {
+  _stopKycPoll();
   ['kycBasicScreen','kycAdvanceScreen','kycUnderReviewScreen','kycRejectedScreen'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.style.display = 'none';
