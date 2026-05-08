@@ -653,53 +653,62 @@ async function compressImageForChat(file) {
 }
 
 async function compressImageForKyc(file) {
-  if (!file) {
-    throw new Error('Image file is required.');
-  }
+  if (!file) throw new Error('Image file is required.');
   if (!KYC_ALLOWED_FILE_TYPES.includes(file.type)) {
-    throw new Error('Only JPG, JPEG, PNG, and WEBP files are allowed.');
-  }
-  if (file.size > KYC_MAX_FILE_SIZE) {
-    throw new Error('Image size must be 6MB or smaller.');
+    throw new Error('Only JPG, PNG, and WEBP files are allowed.');
   }
 
   const image = await loadImageFromFile(file);
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
-  if (!context) {
-    throw new Error('Unable to initialize image processor.');
-  }
+  if (!context) throw new Error('Unable to initialize image processor.');
 
-  let maxDimension = 1440;
-  let quality = 0.9;
-  let dataUrl = '';
+  // Support webp only if browser supports it, else fallback to jpeg
+  const testCanvas = document.createElement('canvas');
+  testCanvas.width = 1; testCanvas.height = 1;
+  const supportsWebp = testCanvas.toDataURL('image/webp').startsWith('data:image/webp');
+  const outputFormat = supportsWebp ? 'image/webp' : 'image/jpeg';
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  let maxDimension = 1600;
+  let quality = 0.88;
+  let bestDataUrl = '';
+
+  // Up to 15 attempts — aggressively reduce until under target
+  for (let attempt = 0; attempt < 15; attempt += 1) {
     const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
-    const width = Math.max(1, Math.round(image.width * scale));
+    const width  = Math.max(1, Math.round(image.width  * scale));
     const height = Math.max(1, Math.round(image.height * scale));
 
-    canvas.width = width;
+    canvas.width  = width;
     canvas.height = height;
     context.clearRect(0, 0, width, height);
     context.drawImage(image, 0, 0, width, height);
 
     let workingQuality = quality;
-    dataUrl = canvas.toDataURL('image/webp', workingQuality);
-    while (estimateDataUrlBytes(dataUrl) > KYC_TARGET_IMAGE_BYTES && workingQuality > 0.4) {
-      workingQuality -= 0.08;
-      dataUrl = canvas.toDataURL('image/webp', workingQuality);
+    let dataUrl = canvas.toDataURL(outputFormat, workingQuality);
+
+    // Inner quality loop — push quality down until size is OK
+    while (estimateDataUrlBytes(dataUrl) > KYC_TARGET_IMAGE_BYTES && workingQuality > 0.1) {
+      workingQuality = Math.max(0.1, workingQuality - 0.1);
+      dataUrl = canvas.toDataURL(outputFormat, workingQuality);
+    }
+
+    // Keep track of best result so far
+    if (!bestDataUrl || estimateDataUrlBytes(dataUrl) < estimateDataUrlBytes(bestDataUrl)) {
+      bestDataUrl = dataUrl;
     }
 
     if (estimateDataUrlBytes(dataUrl) <= KYC_TARGET_IMAGE_BYTES) {
       return dataUrl;
     }
 
-    maxDimension = Math.max(700, Math.round(maxDimension * 0.82));
-    quality = Math.max(0.45, quality - 0.06);
+    // Reduce dimensions aggressively each round
+    maxDimension = Math.max(300, Math.round(maxDimension * 0.75));
+    quality      = Math.max(0.15, quality - 0.08);
   }
 
-  throw new Error('Image is too large. Use a clear image with smaller dimensions.');
+  // Always return best compressed result — never throw for size
+  return bestDataUrl;
 }
 
 function decodeChatPayload(rawText) {
