@@ -5622,13 +5622,15 @@ async function boot() {
     }
 
     validateStartupConfig();
-    tokenService.ensureJwtSecret();
     const mongoConfig = getMongoConfig();
     console.log(`MongoDB target URI: ${mongoConfig.maskedUri}`);
     console.log('Environment loader: dotenv');
 
     await connectToMongo();
     const collections = getCollections();
+    // Load (or generate) a persistent JWT secret from MongoDB so it
+    // survives every deploy even if JWT_SECRET env var is not set.
+    await tokenService.initJwtSecret(collections);
     repos = createRepositories(collections);
     auditLogService = createAuditLogService(collections);
     authEmailService = createAuthEmailService();

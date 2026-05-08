@@ -3,16 +3,42 @@ const crypto = require('crypto');
 const ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 
+// In-memory cache — loaded once from MongoDB on first call
+let _cachedJwtSecret = null;
+
 function getJwtSecret() {
   return String(process.env.JWT_SECRET || '').trim();
 }
 
-function ensureJwtSecret() {
-  const secret = getJwtSecret();
-  if (!secret) {
-    throw new Error('JWT_SECRET is required');
+// Call this at server startup with the db collections object.
+// Loads (or generates) a persistent JWT secret from MongoDB so the
+// same secret survives every Render deploy regardless of env vars.
+async function initJwtSecret(collections) {
+  try {
+    const doc = await collections.appConfig.findOne({ key: 'jwtSecret' });
+    if (doc && doc.value) {
+      _cachedJwtSecret = String(doc.value);
+      return;
+    }
+    // First ever boot — generate and persist
+    const generated = crypto.randomBytes(48).toString('hex');
+    await collections.appConfig.updateOne(
+      { key: 'jwtSecret' },
+      { $set: { key: 'jwtSecret', value: generated, createdAt: new Date() } },
+      { upsert: true }
+    );
+    _cachedJwtSecret = generated;
+  } catch (_) {
+    // DB not ready yet — fall back to env var (will retry on next token op)
   }
-  return secret;
+}
+
+function ensureJwtSecret() {
+  // Priority: env var → cached DB secret → throw
+  const envSecret = getJwtSecret();
+  if (envSecret) return envSecret;
+  if (_cachedJwtSecret) return _cachedJwtSecret;
+  throw new Error('JWT_SECRET not configured. Call initJwtSecret() on startup.');
 }
 
 function normalizeRole(role) {
@@ -196,6 +222,7 @@ function hashRefreshToken(refreshToken) {
 module.exports = {
   ACCESS_TOKEN_TTL_SECONDS,
   REFRESH_TOKEN_TTL_SECONDS,
+  initJwtSecret,
   ensureJwtSecret,
   normalizeRole,
   createTokenPair,
