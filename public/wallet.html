@@ -2228,5 +2228,11 @@
       <span class="nav-label">Assets</span>
     </a>
   </nav>
+<script>
+  (function(){
+    var hash = (window.location.hash||'').replace('#','').toLowerCase();
+    if(hash==='withdraw') { showScreen('screenWithdraw'); history.replaceState(null,'','/wallet'); }
+  })();
+</script>
 </body>
 </html>
