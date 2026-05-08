@@ -2144,6 +2144,24 @@ app.get('/api/p2p/kyc/status', requiresP2PUser, async (req, res) => {
   }
 });
 
+app.post('/api/p2p/kyc/basic-details', requiresP2PUser, async (req, res) => {
+  try {
+    const email = String(req.p2pUser?.email || '').trim().toLowerCase();
+    const collections = getCollections();
+    const patch = { updatedAt: new Date() };
+    if (req.body.fullName)  patch.fullName  = String(req.body.fullName).trim().slice(0, 100);
+    if (req.body.mobile)    patch.mobile    = String(req.body.mobile).trim().slice(0, 20);
+    if (req.body.address)   patch.address   = String(req.body.address).trim().slice(0, 200);
+    if (req.body.country)   patch.country   = String(req.body.country).trim().slice(0, 5);
+    if (req.body.dob)       patch.dob       = String(req.body.dob).trim().slice(0, 12);
+    if (req.body.idType)    patch.idType    = String(req.body.idType).trim().slice(0, 30);
+    await collections.p2pCredentials.updateOne({ email }, { $set: patch }, { upsert: false });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
 app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
   const userId = String(req.p2pUser?.id || '').trim();
   const email = String(req.p2pUser?.email || '')

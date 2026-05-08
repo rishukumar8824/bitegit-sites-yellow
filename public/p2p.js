@@ -7605,6 +7605,13 @@ function backToKycBasic() {
   _openKycMobScreen('kycBasicScreen');
 }
 
+function resubmitKyc() {
+  // Hide rejected screen and open Step 1 directly, bypassing status check
+  var rej = document.getElementById('kycRejectedScreen');
+  if (rej) rej.style.display = 'none';
+  _openKycMobScreen('kycBasicScreen');
+}
+
 function kycFileChanged(input, hintId, thumbId, cardId) {
   var file = input && input.files && input.files[0];
   if(!file) return;
@@ -7644,6 +7651,12 @@ function submitKycBasicAndNext() {
   if(!phone)   { _kycHint('kycBasicHint','Please enter your phone number.','error'); return; }
   if(!address) { _kycHint('kycBasicHint','Please enter your address.','error'); return; }
   window._kycStep1 = { name, idType, dob, phone, address, country };
+  // Save basic details to backend so admin can see them immediately
+  fetch('/api/p2p/kyc/basic-details', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fullName: name, mobile: phone, address: address, country: country, dob: dob, idType: idType })
+  }).catch(function(){});
   // Update badge
   var badge = document.getElementById('kycStatusBadge');
   if(badge){ badge.textContent='Lv.1 Done'; badge.style.cssText='font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(22,199,132,0.15);border:1px solid rgba(22,199,132,0.35);color:#16c784;margin-left:6px;'; }
