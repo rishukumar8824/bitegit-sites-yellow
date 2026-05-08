@@ -7968,6 +7968,7 @@ window.deleteMobAd = async function(offerId) {
     else if (hash === 'withdraw') { setTimeout(function(){ if(typeof openWithdrawModal==='function') openWithdrawModal(); }, 400); }
     else if (hash === 'support') { setTimeout(function(){ showMobScreen('mobSupportScreen'); }, 200); }
     else if (hash === 'transfer') { setTimeout(function(){ var t = document.querySelector('.gt-side-tab[data-side="buy"],.side-tab[data-side="buy"]'); if(t) t.click(); }, 200); }
+    else if (hash === 'kyc') { setTimeout(function(){ setKycModalOpen(true, { hintText: 'Complete KYC to unlock withdrawals.' }); }, 600); }
   })();
 
   // Unified click handler — nav tabs + back + KYC actions
