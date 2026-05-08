@@ -6095,11 +6095,15 @@ document.querySelectorAll('[data-mobile-tab-target]').forEach((link) => {
 });
 
 window.addEventListener('hashchange', () => {
-  if (document.body.classList.contains('kyc-screen-open')) return;
+  // If KYC screen open and user navigates away, close KYC first then proceed
+  if (document.body.classList.contains('kyc-screen-open')) {
+    closeKycScreens();
+  }
   syncMobileTabFromHash({ refreshP2P: false });
 });
 
 window.addEventListener('resize', () => {
+  // Skip resize-driven tab sync only (not navigation) while KYC is open
   if (document.body.classList.contains('kyc-screen-open')) return;
   if (!isMobileViewport()) {
     setMobileNavActive('p2p');
