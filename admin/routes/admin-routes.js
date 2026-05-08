@@ -329,6 +329,11 @@ function registerAdminRoutes(app, deps) {
   );
 
   router.post('/users/:userId/kyc/review', protect(ROLE_GROUPS.COMPLIANCE), withLogging({ module: 'users', action: 'review_user_kyc' }, adminControllers.reviewUserKyc));
+  router.get('/users/:userId/wallet', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'users', action: 'get_user_wallet' }, adminControllers.getUserWalletProfile));
+  router.get('/users/:userId/withdrawals', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'users', action: 'get_user_withdrawals' }, adminControllers.getUserWithdrawalsProfile));
+  router.get('/users/:userId/deposits', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'users', action: 'get_user_deposits' }, adminControllers.getUserDepositsProfile));
+  router.get('/users/:userId/trades', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'users', action: 'get_user_trades' }, adminControllers.getUserTradesProfile));
+  router.get('/users/:userId/p2p-orders', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'users', action: 'get_user_p2p_orders' }, adminControllers.getUserP2POrdersProfile));
 
   // -------------------------
   // Wallet Management

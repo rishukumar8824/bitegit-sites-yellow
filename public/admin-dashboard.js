@@ -894,7 +894,7 @@ async function loadWallet() {
         </div>
         <div class="mt-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-300" style="display:grid;gap:7px;">
           <div><span class="text-slate-500">User:</span> ${escapeHtml(userLabel)}</div>
-          <div><span class="text-slate-500">User ID:</span> ${escapeHtml(row.userId || '-')}</div>
+          <div><span class="text-slate-500">User ID:</span> ${row.userId ? `<button style="color:#60a5fa;text-decoration:underline;background:none;border:none;cursor:pointer;padding:0;font-size:inherit;" data-open-user-balance="${escapeHtml(row.userId)}">${escapeHtml(row.userId)}</button>` : '-'}</div>
           <div><span class="text-slate-500">Network:</span> ${escapeHtml(network)}</div>
           <div style="word-break:break-all;"><span class="text-slate-500">Address:</span> ${escapeHtml(address)}</div>
           <div><span class="text-slate-500">Created:</span> ${escapeHtml(formatDate(row.createdAt))}</div>
@@ -3097,7 +3097,16 @@ function wireEventListeners() {
 
   // Wallet
   document.getElementById('depositsList').addEventListener('click', handleDepositAction);
-  document.getElementById('withdrawalsList').addEventListener('click', handleWithdrawalAction);
+  document.getElementById('withdrawalsList').addEventListener('click', (e) => {
+    const profileBtn = e.target.closest('[data-open-user-balance]');
+    if (profileBtn) {
+      const uid = profileBtn.getAttribute('data-open-user-balance');
+      openUserProfile(uid);
+      setTimeout(() => switchUpTab('balance'), 150);
+      return;
+    }
+    handleWithdrawalAction(e);
+  });
   document.getElementById('walletDepositsReloadBtn').addEventListener('click', async () => loadWallet());
   document.getElementById('walletWithdrawalsReloadBtn').addEventListener('click', async () => loadWallet());
   document.getElementById('walletDepositStatusFilter').addEventListener('change', async () => loadWallet());

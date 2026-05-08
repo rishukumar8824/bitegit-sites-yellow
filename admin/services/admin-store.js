@@ -2458,8 +2458,60 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     getMonitoringOverview,
     listApiLogs,
     listAuditLogs,
-    makeP2PUserId
+    makeP2PUserId,
+    getUserWallet,
+    getUserWithdrawals,
+    getUserDeposits,
+    getUserTrades,
+    getUserP2POrders
   };
+
+  async function getUserWallet(userId) {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) return null;
+    const wallet = await wallets.findOne({ userId: normalizedUserId });
+    return {
+      userId: normalizedUserId,
+      balance: getAvailableBalance(wallet),
+      lockedBalance: toNumber(wallet?.lockedBalance, 0),
+      balances: wallet
+        ? [{ coin: 'USDT', available: getAvailableBalance(wallet), locked: toNumber(wallet?.lockedBalance, 0) }]
+        : []
+    };
+  }
+
+  async function getUserWithdrawals(userId, params = {}) {
+    const normalizedUserId = String(userId || '').trim();
+    const { page, limit, skip } = parsePagination(params);
+    const rows = await adminWithdrawals.find({ userId: normalizedUserId }).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
+    const total = await adminWithdrawals.countDocuments({ userId: normalizedUserId });
+    return { page, limit, total, withdrawals: rows };
+  }
+
+  async function getUserDeposits(userId, params = {}) {
+    const normalizedUserId = String(userId || '').trim();
+    const { page, limit, skip } = parsePagination(params);
+    const rows = await adminDeposits.find({ userId: normalizedUserId }).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
+    const total = await adminDeposits.countDocuments({ userId: normalizedUserId });
+    return { page, limit, total, deposits: rows };
+  }
+
+  async function getUserTrades(userId, params = {}) {
+    const normalizedUserId = String(userId || '').trim();
+    const { page, limit, skip } = parsePagination(params);
+    const rows = await tradeOrders.find({ userId: normalizedUserId }).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
+    const total = await tradeOrders.countDocuments({ userId: normalizedUserId });
+    return { page, limit, total, trades: rows };
+  }
+
+  async function getUserP2POrders(userId, params = {}) {
+    const normalizedUserId = String(userId || '').trim();
+    const { page, limit, skip } = parsePagination(params);
+    const query = { $or: [{ buyerUserId: normalizedUserId }, { sellerUserId: normalizedUserId }] };
+    const rows = await p2pOrders.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
+    const total = await p2pOrders.countDocuments(query);
+    return { page, limit, total, orders: rows };
+  }
 }
 
 module.exports = {

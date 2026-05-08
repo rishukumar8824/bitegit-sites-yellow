@@ -857,8 +857,39 @@ function createAdminControllers({
     logAudit,
     setAdminCookies,
     clearAdminCookies,
-    loginAsUser
+    loginAsUser,
+    getUserWalletProfile,
+    getUserWithdrawalsProfile,
+    getUserDepositsProfile,
+    getUserTradesProfile,
+    getUserP2POrdersProfile
   };
+
+  async function getUserWalletProfile(req, res) {
+    const data = await adminStore.getUserWallet(req.params.userId);
+    if (!data) return res.status(404).json({ message: 'User wallet not found.' });
+    return res.json({ wallet: data });
+  }
+
+  async function getUserWithdrawalsProfile(req, res) {
+    const data = await adminStore.getUserWithdrawals(req.params.userId, req.query);
+    return res.json(data);
+  }
+
+  async function getUserDepositsProfile(req, res) {
+    const data = await adminStore.getUserDeposits(req.params.userId, req.query);
+    return res.json(data);
+  }
+
+  async function getUserTradesProfile(req, res) {
+    const data = await adminStore.getUserTrades(req.params.userId, req.query);
+    return res.json(data);
+  }
+
+  async function getUserP2POrdersProfile(req, res) {
+    const data = await adminStore.getUserP2POrders(req.params.userId, req.query);
+    return res.json(data);
+  }
 }
 
 module.exports = {
