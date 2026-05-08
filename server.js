@@ -2181,8 +2181,12 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
     aadhaarFrontImage = extractKycImageData(req.body?.aadhaarFrontImage, 'Aadhaar front');
     aadhaarBackImage = req.body?.aadhaarBackImage ? extractKycImageData(req.body?.aadhaarBackImage, 'Aadhaar back') : null;
     selfieWithDocumentImage = extractKycImageData(req.body?.selfieWithDocumentImage, 'Selfie with document');
-    const legalName = String(req.body?.legalName || '').trim().slice(0, 100);
-    const idType = String(req.body?.idType || 'aadhaar').trim().slice(0, 30);
+    const legalName = String(req.body?.legalName || req.body?.fullName || '').trim().slice(0, 100);
+    const idType    = String(req.body?.idType || 'aadhaar').trim().slice(0, 30);
+    const dob       = String(req.body?.dob || '').trim().slice(0, 12);
+    const mobile    = String(req.body?.mobile || '').trim().slice(0, 20);
+    const address   = String(req.body?.address || '').trim().slice(0, 200);
+    const country   = String(req.body?.country || '').trim().slice(0, 5);
   } catch (error) {
     return res.status(400).json({ message: error.message || 'Invalid KYC submission payload.' });
   }
@@ -2230,6 +2234,10 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
       status: nextStatus,
       legalName,
       idType,
+      dob,
+      mobile,
+      address,
+      country,
       aadhaarMasked: maskAadhaar(aadhaarDigits),
       aadhaarHash: hashSensitive(aadhaarDigits),
       aadhaarFrontImage: encryptText(aadhaarFrontImage.dataUrl),
@@ -2259,7 +2267,12 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
       aadhaarLast4: aadhaarDigits.slice(-4),
       faceMatchScore: faceMatch.score,
       faceMatchProvider: faceMatch.provider,
-      rejectionReason
+      rejectionReason,
+      fullName: legalName,
+      mobile,
+      address,
+      country,
+      dob
     });
 
     const kycProfile = buildP2PKycProfileFromCredential(updatedCredential || {});

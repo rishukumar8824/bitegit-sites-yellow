@@ -2429,6 +2429,11 @@ async function loadUpOverview() {
     <div style="background:var(--bg-card);border-radius:10px;border:1px solid var(--border);padding:14px 16px;margin-bottom:10px;">
       <div class="up-info-row"><span class="up-info-label">User ID</span><span class="up-info-value" style="font-family:monospace;color:var(--accent);font-size:11px;">${user.userId||'-'}</span></div>
       <div class="up-info-row"><span class="up-info-label">Email</span><span class="up-info-value">${user.email||'-'}</span></div>
+      <div class="up-info-row"><span class="up-info-label">Full Name</span><span class="up-info-value">${user.fullName||'<span style="color:var(--text-2);">Not provided</span>'}</span></div>
+      <div class="up-info-row"><span class="up-info-label">Mobile</span><span class="up-info-value">${user.mobile||'<span style="color:var(--text-2);">Not provided</span>'}</span></div>
+      <div class="up-info-row"><span class="up-info-label">Address</span><span class="up-info-value" style="font-size:12px;">${user.address||'<span style="color:var(--text-2);">Not provided</span>'}</span></div>
+      <div class="up-info-row"><span class="up-info-label">Country</span><span class="up-info-value">${user.country||'<span style="color:var(--text-2);">-</span>'}</span></div>
+      <div class="up-info-row"><span class="up-info-label">Date of Birth</span><span class="up-info-value">${user.dob||'<span style="color:var(--text-2);">-</span>'}</span></div>
       <div class="up-info-row"><span class="up-info-label">Role</span><span class="up-info-value">${statusBadge(user.role||'USER')}</span></div>
       <div class="up-info-row"><span class="up-info-label">Account Status</span><span class="up-info-value">${statusBadge(user.status||'ACTIVE')}</span></div>
       <div class="up-info-row"><span class="up-info-label">KYC Status</span><span class="up-info-value">${statusBadge(user.kycStatus||'NOT_SUBMITTED')}</span></div>

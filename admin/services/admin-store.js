@@ -931,6 +931,11 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       kycStatus: String(profile?.kycStatus || 'PENDING').toUpperCase(),
       kycRemarks: String(profile?.kycRemarks || ''),
       role: String(credential?.role || 'USER').toUpperCase(),
+      fullName: String(credential?.fullName || ''),
+      mobile:   String(credential?.mobile   || ''),
+      address:  String(credential?.address  || ''),
+      country:  String(credential?.country  || ''),
+      dob:      String(credential?.dob      || ''),
       wallet: {
         balance: getAvailableBalance(wallet),
         lockedBalance: toNumber(wallet?.lockedBalance, 0)

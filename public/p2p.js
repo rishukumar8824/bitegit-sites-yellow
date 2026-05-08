@@ -7604,15 +7604,18 @@ function submitKycBasicAndNext() {
     return;
   }
   window.__p2pKycStepBusy = Date.now();
-  var name   = ((document.getElementById('kycFullName')||{}).value||'').trim();
-  var idType = ((document.getElementById('kycIdType')||{}).value||'').trim();
-  var dob    = ((document.getElementById('kycDob')||{}).value||'').trim();
-  var phone  = ((document.getElementById('kycPhone')||{}).value||'').trim();
-  if(!name)   { _kycHint('kycBasicHint','Please enter your full name.','error'); return; }
-  if(!idType) { _kycHint('kycBasicHint','Please select your ID type.','error'); return; }
-  if(!dob)    { _kycHint('kycBasicHint','Please enter your date of birth.','error'); return; }
-  if(!phone)  { _kycHint('kycBasicHint','Please enter your phone number.','error'); return; }
-  window._kycSelectedIdType = idType;
+  var name    = ((document.getElementById('kycFullName')||{}).value||'').trim();
+  var idType  = ((document.getElementById('kycIdType')||{}).value||'').trim();
+  var dob     = ((document.getElementById('kycDob')||{}).value||'').trim();
+  var phone   = ((document.getElementById('kycPhone')||{}).value||'').trim();
+  var address = ((document.getElementById('kycAddress')||{}).value||'').trim();
+  var country = ((document.getElementById('kycCountry')||{}).value||'').trim();
+  if(!name)    { _kycHint('kycBasicHint','Please enter your full name.','error'); return; }
+  if(!idType)  { _kycHint('kycBasicHint','Please select your ID type.','error'); return; }
+  if(!dob)     { _kycHint('kycBasicHint','Please enter your date of birth.','error'); return; }
+  if(!phone)   { _kycHint('kycBasicHint','Please enter your phone number.','error'); return; }
+  if(!address) { _kycHint('kycBasicHint','Please enter your address.','error'); return; }
+  window._kycStep1 = { name, idType, dob, phone, address, country };
   // Update badge
   var badge = document.getElementById('kycStatusBadge');
   if(badge){ badge.textContent='Lv.1 Done'; badge.style.cssText='font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(22,199,132,0.15);border:1px solid rgba(22,199,132,0.35);color:#16c784;margin-left:6px;'; }
@@ -7662,7 +7665,13 @@ function submitKycAdvance() {
         aadhaarNumber: aadhaarNum,
         aadhaarFrontImage: aadhaarFrontDataUrl,
         aadhaarBackImage: aadhaarBackDataUrl,
-        selfieWithDocumentImage: selfieDataUrl
+        selfieWithDocumentImage: selfieDataUrl,
+        fullName:  (window._kycStep1 || {}).name    || '',
+        idType:    (window._kycStep1 || {}).idType   || 'aadhaar',
+        dob:       (window._kycStep1 || {}).dob      || '',
+        mobile:    (window._kycStep1 || {}).phone    || '',
+        address:   (window._kycStep1 || {}).address  || '',
+        country:   (window._kycStep1 || {}).country  || ''
       })
     });
   }).then(function(res) {
