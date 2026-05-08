@@ -3242,7 +3242,7 @@ body.coinflare-page.cf-chart-open .cf-signup-link {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    line-height: 1;
+    line-height: normal;
   }
 
   .cf-user-panel {
