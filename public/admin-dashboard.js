@@ -2814,6 +2814,8 @@ async function upApproveKyc() {
     showMessage('KYC Approved ✅', 'success');
     await loadUpKyc();
     await loadUpOverview();
+    if (state.currentView === 'users') loadUsers();
+    if (state.currentView === 'kyc') loadKyc();
   } catch(err) { showMessage(err.message||'Failed','error'); }
 }
 
@@ -2825,6 +2827,8 @@ async function upRejectKyc() {
     showMessage('KYC Rejected', 'success');
     await loadUpKyc();
     await loadUpOverview();
+    if (state.currentView === 'users') loadUsers();
+    if (state.currentView === 'kyc') loadKyc();
   } catch(err) { showMessage(err.message||'Failed','error'); }
 }
 

@@ -1150,48 +1150,50 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       { upsert: true }
     );
 
-    // Sync p2p_credentials — update directly by userId (indexed), then also by email if found
+    // Sync p2p_credentials — find the actual document first, then update by _id (guaranteed match)
+    const now = new Date();
+    const kycPatch = {
+      kycStatus: normalizedDecision === 'APPROVED' ? 'VERIFIED'
+               : normalizedDecision === 'PENDING'  ? 'PENDING_REVIEW'
+               : normalizedDecision,
+      kycUpdatedAt: now,
+      updatedAt: now
+    };
+    if (normalizedDecision === 'REJECTED') {
+      kycPatch.kycRejectedAt = now;
+      kycPatch.kycVerifiedAt = null;
+      kycPatch.kycRejectionReason = String(remarks || 'Rejected by admin').trim();
+    } else if (normalizedDecision === 'APPROVED') {
+      kycPatch.kycVerifiedAt = now;
+      kycPatch.kycRejectedAt = null;
+      kycPatch.kycRejectionReason = '';
+    } else {
+      kycPatch.kycRejectionReason = '';
+    }
+
     try {
-      const now = new Date();
-      const kycPatch = {
-        kycStatus: normalizedDecision === 'APPROVED' ? 'VERIFIED'
-                 : normalizedDecision === 'PENDING'  ? 'PENDING_REVIEW'
-                 : normalizedDecision,
-        kycUpdatedAt: now,
-        updatedAt: now
-      };
-      if (normalizedDecision === 'REJECTED') {
-        kycPatch.kycRejectedAt = now;
-        kycPatch.kycVerifiedAt = null;
-        kycPatch.kycRejectionReason = String(remarks || 'Rejected by admin').trim();
-      } else if (normalizedDecision === 'APPROVED') {
-        kycPatch.kycVerifiedAt = now;
-        kycPatch.kycRejectedAt = null;
-        kycPatch.kycRejectionReason = '';
+      // Build all possible query conditions for this user
+      const orConditions = [{ userId: normalizedUserId }];
+      const profileEmail = String(existingProfile?.email || '').trim().toLowerCase();
+      if (profileEmail) orConditions.push({ email: profileEmail });
+
+      // Find the actual p2pCredentials document
+      const credDoc = await p2pCredentials.findOne(
+        orConditions.length > 1 ? { $or: orConditions } : orConditions[0],
+        { projection: { _id: 1, email: 1, userId: 1 } }
+      );
+
+      if (credDoc) {
+        // Update by _id — 100% guaranteed match
+        const result = await p2pCredentials.updateOne({ _id: credDoc._id }, { $set: kycPatch });
+        console.log('[reviewKyc] p2pCredentials updated _id:', credDoc._id, 'email:', credDoc.email, '→', kycPatch.kycStatus, 'matched:', result.matchedCount);
       } else {
-        kycPatch.kycRejectionReason = '';
-      }
-
-      // Primary: update by userId (always present and indexed in p2pCredentials)
-      const byUserId = await p2pCredentials.updateOne({ userId: normalizedUserId }, { $set: kycPatch });
-      console.log('[reviewKyc] p2pCredentials by userId:', normalizedUserId, '→', kycPatch.kycStatus, 'matched:', byUserId.matchedCount);
-
-      // If userId didn't match, try by email as fallback
-      if (!byUserId.matchedCount) {
-        let credEmail = String(existingProfile?.email || '').trim().toLowerCase();
-        if (!credEmail) {
-          const kycReq = await p2pKycRequests.findOne({ userId: normalizedUserId }, { projection: { email: 1 } });
-          if (kycReq?.email) credEmail = String(kycReq.email).trim().toLowerCase();
-        }
-        if (credEmail) {
-          const byEmail = await p2pCredentials.updateOne({ email: credEmail }, { $set: kycPatch });
-          console.log('[reviewKyc] p2pCredentials by email:', credEmail, '→', kycPatch.kycStatus, 'matched:', byEmail.matchedCount);
-        }
+        console.warn('[reviewKyc] NO p2pCredentials found for userId:', normalizedUserId, 'email:', profileEmail);
       }
 
       // Also sync p2pKycRequests status
       await p2pKycRequests.updateOne(
-        { userId: normalizedUserId },
+        { $or: [{ userId: normalizedUserId }, ...(profileEmail ? [{ email: profileEmail }] : [])] },
         { $set: { status: kycPatch.kycStatus, reviewedAt: now, updatedAt: now } }
       ).catch(() => {});
     } catch (syncErr) {
