@@ -490,7 +490,7 @@ function registerAuthRoutes(app, deps) {
       });
 
       const user = buildP2PUserFromEmail(email, 'USER');
-      await walletService.ensureWallet(user.id, { username: user.username });
+      await walletService.ensureWallet(user.id, { username: user.username, initialBalance: 0 });
 
       const tokenPair = await createAndReturnTokens(res, user);
 
