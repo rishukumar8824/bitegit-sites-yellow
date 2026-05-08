@@ -1155,9 +1155,9 @@
           </div>
           <button id="kycCloseBtn" type="button" class="p2p-sec-btn" aria-label="Close KYC">Close</button>
         </div>
-        <form id="kycForm" class="p2p-kyc-form">
+        <form id="kycForm" class="p2p-kyc-form" novalidate>
           <label class="p2p-kyc-field"><span>Full Legal Name</span>
-            <input id="kycLegalNameInput" type="text" autocomplete="name" placeholder="As on government ID" required />
+            <input id="kycLegalNameInput" type="text" autocomplete="name" placeholder="As on government ID" enterkeyhint="next" />
           </label>
           <label class="p2p-kyc-field"><span>ID Type</span>
             <select id="kycIdTypeInput" class="p2p-kyc-select" required>
@@ -1172,15 +1172,15 @@
             <input id="kycAadhaarInput" type="text" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="Enter 12-digit Aadhaar number" />
           </label>
           <label class="p2p-kyc-field"><span>ID Front Image</span>
-            <input id="kycAadhaarFrontInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" required />
+            <input id="kycAadhaarFrontInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" />
             <small id="kycAadhaarFrontMeta">Upload clear front side image.</small>
           </label>
           <label class="p2p-kyc-field"><span>ID Back Image</span>
-            <input id="kycAadhaarBackInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" required />
+            <input id="kycAadhaarBackInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" />
             <small>Upload clear back side image.</small>
           </label>
           <label class="p2p-kyc-field"><span>Selfie With Document</span>
-            <input id="kycSelfieInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" required />
+            <input id="kycSelfieInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" />
             <small id="kycSelfieMeta">Face and document must be clearly visible in one frame.</small>
           </label>
           <label class="p2p-kyc-consent">
