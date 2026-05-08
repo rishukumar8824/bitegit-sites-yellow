@@ -79,7 +79,8 @@ function registerAuthRoutes(app, deps) {
     authEmailService,
     collections,
     otpTtlMs = 10 * 60 * 1000,
-    allowDemoOtp = false
+    allowDemoOtp = false,
+    onRegisterSuccess = null
   } = deps;
 
   const loginLimiter = createIpRateLimiter({
@@ -505,6 +506,10 @@ function registerAuthRoutes(app, deps) {
         ipAddress,
         metadata: { email, userAgent, country: loc.country, city: loc.city, region: loc.region }
       });
+
+      if (typeof onRegisterSuccess === 'function') {
+        onRegisterSuccess({ user, ipAddress, userAgent }).catch(() => {});
+      }
 
       return res.status(201).json({
         message: 'Registration successful.',

@@ -3421,6 +3421,7 @@ async function init() {
     // SSE for instant new-ticket alerts
     connectSupportSSE();
     connectWithdrawalSSE();
+    connectNewUserSSE();
     // Poll support tickets every 15s for badge count sync
     await pollSupportTickets();
     await refreshWithdrawalNotifications({ silent: true });
@@ -3459,6 +3460,52 @@ function connectWithdrawalSSE() {
     } catch(_) {}
   };
   _wdSSE.onerror = () => setTimeout(connectWithdrawalSSE, 5000);
+}
+
+let _newUserSSE = null;
+function connectNewUserSSE() {
+  if (_newUserSSE) { try { _newUserSSE.close(); } catch(_) {} }
+  _newUserSSE = new EventSource('/api/admin/user/live-notify');
+  _newUserSSE.onmessage = (ev) => {
+    try {
+      const info = JSON.parse(ev.data);
+      if (info.type === 'new_user') {
+        showNewUserNotification(info);
+        const badge = document.getElementById('usersBadge');
+        if (badge) { badge.style.display = ''; badge.textContent = (parseInt(badge.textContent || '0') || 0) + 1; }
+        if (state.currentView === 'users') loadUsers({ silent: true }).catch(() => {});
+      }
+    } catch(_) {}
+  };
+  _newUserSSE.onerror = () => setTimeout(connectNewUserSSE, 5000);
+}
+
+function showNewUserNotification(info) {
+  const email = info.email || 'Unknown';
+  const username = info.username || email.split('@')[0];
+  const n = document.createElement('div');
+  n.style.cssText = `position:fixed;top:18px;right:18px;z-index:9999;
+    background:var(--bg-card);border:1px solid #22c55e;border-radius:14px;
+    padding:14px 18px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;
+    box-shadow:0 8px 32px rgba(0,0,0,0.7);animation:slideInDown 0.3s cubic-bezier(.22,1,.36,1);max-width:320px;`;
+  n.innerHTML = `
+    <div style="width:38px;height:38px;border-radius:50%;background:#22c55e20;border:2px solid #22c55e40;
+                display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">👤</div>
+    <div style="flex:1;min-width:0;">
+      <p style="margin:0 0 2px;font-size:12px;font-weight:700;color:#22c55e;">New User Registered!</p>
+      <p style="margin:0 0 2px;font-size:13px;font-weight:600;color:var(--text-1);">${username}</p>
+      <p style="margin:0;font-size:11px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${email}</p>
+      <p style="margin:4px 0 0;font-size:11px;color:#22c55e;font-weight:600;">👆 Click to view users</p>
+    </div>
+    <button onclick="event.stopPropagation();this.closest('[style]').remove();"
+      style="background:none;border:none;color:var(--text-2);cursor:pointer;font-size:16px;padding:0;flex-shrink:0;">✕</button>`;
+  n.addEventListener('click', (e) => {
+    if (e.target.tagName === 'BUTTON') return;
+    n.remove();
+    changeView('users');
+  });
+  document.body.appendChild(n);
+  setTimeout(() => { if (n.isConnected) n.remove(); }, 10000);
 }
 
 async function refreshWithdrawalNotifications({ silent = false } = {}) {

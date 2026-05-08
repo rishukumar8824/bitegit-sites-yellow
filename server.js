@@ -287,6 +287,11 @@ function broadcastAdminWithdrawalEvent(payload) {
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   adminWithdrawalSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
 }
+const adminNewUserSseClients = new Set();
+function broadcastAdminNewUserEvent(payload) {
+  const msg = `data: ${JSON.stringify(payload)}\n\n`;
+  adminNewUserSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
+}
 function getUserStreams(userId) {
   if (!p2pUserStreams.has(userId)) p2pUserStreams.set(userId, new Set());
   return p2pUserStreams.get(userId);
@@ -4741,7 +4746,11 @@ app.get('/api/p2p/me/stream', requiresP2PUser, (req, res) => {
 
 // ── Admin Support SSE — live notify ──────────────────────────────────────────
 app.get('/api/admin/support/live-notify', async (req, res) => {
-  // Allow admin cookie or skip auth in dev
+  try {
+    const cookies = parseCookies(req);
+    const accessToken = String(cookies[ADMIN_ACCESS_COOKIE_NAME] || '').trim();
+    if (!accessToken) return res.status(401).end();
+  } catch(_) { return res.status(401).end(); }
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -4769,6 +4778,24 @@ app.get('/api/admin/withdrawal/live-notify', async (req, res) => {
   res.write(': connected\n\n');
   const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) {} }, 20000);
   req.on('close', () => { clearInterval(ping); adminWithdrawalSseClients.delete(res); });
+});
+
+// ── Admin: New user registration SSE ──────────────────────────────────────────
+app.get('/api/admin/user/live-notify', async (req, res) => {
+  try {
+    const cookies = parseCookies(req);
+    const accessToken = String(cookies[ADMIN_ACCESS_COOKIE_NAME] || '').trim();
+    if (!accessToken) return res.status(401).end();
+  } catch(_) {}
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders();
+  adminNewUserSseClients.add(res);
+  res.write(': connected\n\n');
+  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) {} }, 20000);
+  req.on('close', () => { clearInterval(ping); adminNewUserSseClients.delete(res); });
 });
 
 // ── Admin: List all withdrawal requests ───────────────────────────────────────
@@ -5543,6 +5570,15 @@ async function boot() {
         await userCenterService.recordLoginEvent(user, {
           ip: ipAddress,
           device: userAgent
+        });
+      },
+      onRegisterSuccess: async ({ user }) => {
+        broadcastAdminNewUserEvent({
+          type: 'new_user',
+          userId: user.id,
+          email: user.email,
+          username: user.username,
+          ts: Date.now()
         });
       }
     });
