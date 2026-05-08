@@ -1150,7 +1150,7 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       { upsert: true }
     );
 
-    // Sync p2p_credentials directly by userId — no email lookup needed
+    // Sync p2p_credentials — find email from multiple sources then update by email (primary key)
     try {
       const now = new Date();
       const kycPatch = {
@@ -1171,9 +1171,28 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       } else {
         kycPatch.kycRejectionReason = '';
       }
-      await p2pCredentials.updateOne({ userId: normalizedUserId }, { $set: kycPatch });
+
+      // Try all sources to get email, then update by email (primary key of p2pCredentials)
+      let credEmail = String(existingProfile?.email || '').trim().toLowerCase();
+      if (!credEmail) {
+        const kycReq = await p2pKycRequests.findOne({ userId: normalizedUserId }, { projection: { email: 1 } });
+        if (kycReq?.email) credEmail = String(kycReq.email).trim().toLowerCase();
+      }
+      if (!credEmail) {
+        const credByUserId = await p2pCredentials.findOne({ userId: normalizedUserId }, { projection: { email: 1 } });
+        if (credByUserId?.email) credEmail = String(credByUserId.email).trim().toLowerCase();
+      }
+
+      if (credEmail) {
+        const result = await p2pCredentials.updateOne({ email: credEmail }, { $set: kycPatch });
+        console.log('[reviewKyc] p2pCredentials updated for', credEmail, '→', kycPatch.kycStatus, 'matched:', result.matchedCount);
+      } else {
+        // Last resort: update by userId field
+        await p2pCredentials.updateOne({ userId: normalizedUserId }, { $set: kycPatch });
+        console.warn('[reviewKyc] updated p2pCredentials by userId fallback for', normalizedUserId);
+      }
     } catch (syncErr) {
-      console.error('[reviewKyc] failed to sync p2p_credentials by userId:', syncErr?.message);
+      console.error('[reviewKyc] failed to sync p2p_credentials:', syncErr?.message);
     }
 
     return getUserKyc(normalizedUserId);
