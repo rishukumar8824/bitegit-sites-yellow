@@ -393,7 +393,16 @@ const BITEGIT_API = (window.BITEGIT_API_BASE || 'http://localhost:3000/api/v1');
   loadUser();
   loadMarkets(true);
   loadAssetSummary();
-  setScreen('home');
+
+  // Handle deep-link hash — e.g. /app#withdraw sends user straight to assets+withdraw
+  const startHash = (window.location.hash || '').replace('#', '').toLowerCase().trim();
+  if (startHash === 'withdraw') {
+    setScreen('assets');
+    history.replaceState(null, '', window.location.pathname);
+  } else {
+    setScreen('home');
+  }
+
   initLiveChat();
 })();
 
