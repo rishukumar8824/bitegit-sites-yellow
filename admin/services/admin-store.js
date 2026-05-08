@@ -1150,34 +1150,30 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       { upsert: true }
     );
 
-    // Also sync p2p_credentials so /api/p2p/me returns the correct KYC status
-    let profileEmail = String(existingProfile?.email || '').trim().toLowerCase();
-    // Fallback 1: look up email from p2pKycRequests if adminUserProfiles has no email
-    if (!profileEmail) {
-      try {
-        const kycReq = await p2pKycRequests.findOne({ userId: normalizedUserId });
-        if (kycReq?.email) profileEmail = String(kycReq.email).trim().toLowerCase();
-      } catch (_) {}
-    }
-    // Fallback 2: look up email from p2pCredentials by userId field (set on every login)
-    if (!profileEmail && repos && typeof repos.getP2PCredentialByUserId === 'function') {
-      try {
-        const cred = await repos.getP2PCredentialByUserId(normalizedUserId);
-        if (cred?.email) profileEmail = String(cred.email).trim().toLowerCase();
-      } catch (_) {}
-    }
-    if (profileEmail && repos && typeof repos.updateP2PCredentialKyc === 'function') {
-      try {
-        await repos.updateP2PCredentialKyc(profileEmail, {
-          status: normalizedDecision, // 'APPROVED' → 'VERIFIED', 'REJECTED' → 'REJECTED', 'PENDING' → 'PENDING_REVIEW'
-          rejectionReason: normalizedDecision === 'REJECTED' ? String(remarks || 'Rejected by admin') : ''
-        });
-        console.log('[reviewKyc] synced p2p_credentials for', profileEmail, '→', normalizedDecision);
-      } catch (syncErr) {
-        console.error('[reviewKyc] failed to sync p2p_credentials:', syncErr?.message);
+    // Sync p2p_credentials directly by userId — no email lookup needed
+    try {
+      const now = new Date();
+      const kycPatch = {
+        kycStatus: normalizedDecision === 'APPROVED' ? 'VERIFIED'
+                 : normalizedDecision === 'PENDING'  ? 'PENDING_REVIEW'
+                 : normalizedDecision,
+        kycUpdatedAt: now,
+        updatedAt: now
+      };
+      if (normalizedDecision === 'REJECTED') {
+        kycPatch.kycRejectedAt = now;
+        kycPatch.kycVerifiedAt = null;
+        kycPatch.kycRejectionReason = String(remarks || 'Rejected by admin').trim();
+      } else if (normalizedDecision === 'APPROVED') {
+        kycPatch.kycVerifiedAt = now;
+        kycPatch.kycRejectedAt = null;
+        kycPatch.kycRejectionReason = '';
+      } else {
+        kycPatch.kycRejectionReason = '';
       }
-    } else {
-      console.warn('[reviewKyc] could not find email for userId', normalizedUserId, '— p2p_credentials NOT updated');
+      await p2pCredentials.updateOne({ userId: normalizedUserId }, { $set: kycPatch });
+    } catch (syncErr) {
+      console.error('[reviewKyc] failed to sync p2p_credentials by userId:', syncErr?.message);
     }
 
     return getUserKyc(normalizedUserId);
