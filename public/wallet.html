@@ -1554,14 +1554,26 @@
         proofUrl: proofUrl
       };
 
+      // Build auth headers — try JWT token from localStorage first, then fall back to cookie
+      var authHeaders = { 'Content-Type': 'application/json' };
+      try {
+        var tok = localStorage.getItem('bitegit_token') || localStorage.getItem('access_token') || localStorage.getItem('p2p_access_token');
+        if (tok) authHeaders['Authorization'] = 'Bearer ' + tok;
+      } catch(_) {}
+
       var res = await fetch('/api/deposits', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(body)
       });
       var data = await res.json();
 
+      if (res.status === 401) {
+        showToast('Session expired. Please login again.');
+        setTimeout(function(){ window.location.href = '/auth'; }, 1500);
+        return;
+      }
       if (!res.ok) {
         showToast(data.message || 'Submission failed. Try again.');
         return;

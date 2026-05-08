@@ -729,18 +729,19 @@ async function loadWallet() {
       const canReview = status === 'PENDING';
       const disabledClass = canReview ? '' : ' opacity-60';
       const disabledAttr = canReview ? '' : ' disabled';
+      const proofLink = row.proofUrl ? `<a href="${row.proofUrl}" target="_blank" style="color:#00b8d4;font-size:11px;">View Proof</a>` : '';
       return `
       <article class="list-item">
         <div class="flex items-start justify-between gap-2">
           <div>
-            <p class="text-sm font-semibold">${row.id}</p>
-            <p class="text-xs text-slate-400">User: ${row.userId || '-'}</p>
+            <p class="text-sm font-semibold">${escapeHtml(row.username || row.email || row.userId || '-')}</p>
+            <p class="text-xs text-slate-400">${escapeHtml(row.email || row.userId || '-')}</p>
             <p class="text-xs text-slate-500">${formatDate(row.createdAt)}</p>
           </div>
           ${statusBadge(status)}
         </div>
-        <p class="mt-2 text-sm text-slate-200">${row.coin || 'USDT'} • ${formatNumber(row.amount || 0, 6)}</p>
-        <p class="mt-1 text-xs text-slate-500">Type: ${row.type || 'ONCHAIN'} • Tx: ${row.txHash || row.txid || '-'}</p>
+        <p class="mt-2 text-sm text-slate-200">${row.coin || 'USDT'} <strong>${formatNumber(row.amount || 0, 2)}</strong> • ${row.network || ''}</p>
+        <p class="mt-1 text-xs text-slate-500">Tx: ${row.txHash || row.txid || '-'} ${proofLink}</p>
         <div class="mt-2 flex gap-2">
           <button class="btn-primary${disabledClass}" data-deposit-action="approve" data-deposit-id="${row.id}"${disabledAttr}>Approve</button>
           <button class="btn-danger${disabledClass}" data-deposit-action="reject" data-deposit-id="${row.id}"${disabledAttr}>Reject</button>
