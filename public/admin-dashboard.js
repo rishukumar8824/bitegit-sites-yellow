@@ -244,9 +244,7 @@ async function changeView(view) {
   if (!viewLoaders[view]) {
     return;
   }
-  // Always close user profile drawer when switching views
   closeUserProfile();
-  // Clear support polling when leaving support view
   if (state.currentView === 'support' && view !== 'support') {
     if (state.support.pollInterval) {
       clearInterval(state.support.pollInterval);
@@ -254,6 +252,7 @@ async function changeView(view) {
     }
   }
   state.currentView = view;
+  try { localStorage.setItem('admin_last_view', view); } catch(_) {}
   setActiveNav(view);
   showPanel(view);
   setSidebarOpen(false);
@@ -3406,23 +3405,43 @@ function showDisputeNotification(info) {
   setTimeout(() => { if (n.isConnected) n.remove(); }, 15000);
 }
 
+// ── Inactivity logout (5 hours) ───────────────────────────────────────────────
+const INACTIVITY_MS = 5 * 60 * 60 * 1000;
+let _inactivityTimer = null;
+function resetInactivityTimer() {
+  clearTimeout(_inactivityTimer);
+  _inactivityTimer = setTimeout(async () => {
+    try { await apiRequest('/auth/logout', { method: 'POST' }); } catch(_) {}
+    window.location.href = '/admin/login';
+  }, INACTIVITY_MS);
+}
+function setupInactivityWatcher() {
+  ['mousemove','keydown','mousedown','touchstart','scroll','click'].forEach(ev => {
+    document.addEventListener(ev, resetInactivityTimer, { passive: true });
+  });
+  resetInactivityTimer();
+}
+
 async function init() {
   try {
     startLiveClock();
     await ensureAdminSession();
     wireEventListeners();
-    await changeView('overview');
+    setupInactivityWatcher();
 
-    // Refresh current view every 30s
+    // Restore last viewed page or default to overview
+    const savedView = localStorage.getItem('admin_last_view');
+    const startView = (savedView && viewLoaders[savedView]) ? savedView : 'overview';
+    await changeView(startView);
+
+    // Refresh current view every 30s silently
     setInterval(async () => {
       await loadCurrentView({ silent: true });
     }, 30000);
 
-    // SSE for instant new-ticket alerts
     connectSupportSSE();
     connectWithdrawalSSE();
     connectNewUserSSE();
-    // Poll support tickets every 15s for badge count sync
     await pollSupportTickets();
     await refreshWithdrawalNotifications({ silent: true });
     setInterval(pollSupportTickets, 15000);

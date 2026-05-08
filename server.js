@@ -60,7 +60,7 @@ const ADMIN_SEED_ROLE = String(process.env.ADMIN_ROLE || 'SUPER_ADMIN')
   .trim()
   .toUpperCase();
 const SESSION_COOKIE_NAME = 'admin_session';
-const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+const SESSION_TTL_MS = 1000 * 60 * 60 * 5; // 5-hour inactivity timeout
 const ADMIN_ACCESS_COOKIE_NAME = 'admin_access_token';
 const ADMIN_REFRESH_COOKIE_NAME = 'admin_refresh_token';
 
