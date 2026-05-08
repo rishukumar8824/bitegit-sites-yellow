@@ -1853,7 +1853,7 @@
       ? (currentUser.kyc.status || '').toLowerCase() : '';
     if (kycSt !== 'verified' && kycSt !== 'approved') {
       showToast('KYC verification required to withdraw. Please complete KYC first.');
-      setTimeout(function() { showScreen('screenKyc'); }, 1200);
+      setTimeout(function() { window.location.href = '/p2p#kyc'; }, 1200);
       return;
     }
     // Store for confirm modal
