@@ -363,9 +363,13 @@ function createAdminControllers({
   }
 
   async function reviewUserKyc(req, res) {
+    const userId = String(req.params.userId || '').trim();
+    if (!userId || userId === 'null' || userId === 'undefined') {
+      return res.status(400).json({ message: 'Valid userId is required for KYC review.' });
+    }
     const decision = String(req.body?.decision || '').trim().toUpperCase();
     const remarks = String(req.body?.remarks || '').trim();
-    const data = await adminStore.reviewKyc(req.params.userId, decision, remarks);
+    const data = await adminStore.reviewKyc(userId, decision, remarks);
 
     await logAudit(req, {
       module: 'users',

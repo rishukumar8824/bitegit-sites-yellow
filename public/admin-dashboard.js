@@ -2809,8 +2809,10 @@ async function loadUpKyc() {
 }
 
 async function upApproveKyc() {
+  const userId = _upUserId;
+  if (!userId) { showMessage('No user selected','error'); return; }
   try {
-    await reviewKyc(_upUserId, 'APPROVED', '');
+    await reviewKyc(userId, 'APPROVED', '');
     showMessage('KYC Approved ✅', 'success');
     await loadUpKyc();
     await loadUpOverview();
@@ -2820,10 +2822,12 @@ async function upApproveKyc() {
 }
 
 async function upRejectKyc() {
+  const userId = _upUserId;
+  if (!userId) { showMessage('No user selected','error'); return; }
   const reason = await showRejectReasonModal();
   if (!reason) return;
   try {
-    await reviewKyc(_upUserId, 'REJECTED', reason);
+    await reviewKyc(userId, 'REJECTED', reason);
     showMessage('KYC Rejected', 'success');
     await loadUpKyc();
     await loadUpOverview();

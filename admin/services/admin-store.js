@@ -1120,6 +1120,9 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
 
   async function reviewKyc(userId, decision, remarks) {
     const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId || normalizedUserId === 'null' || normalizedUserId === 'undefined') {
+      throw new Error('userId is required for KYC review');
+    }
     const normalizedDecision = String(decision || '').trim().toUpperCase();
     if (!['APPROVED', 'REJECTED', 'PENDING'].includes(normalizedDecision)) {
       throw new Error('Invalid KYC decision');
