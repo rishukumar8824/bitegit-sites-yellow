@@ -1921,6 +1921,24 @@ body.p2p-kyc-open { overflow: hidden; }
 .p2p-kyc-field { display: grid; gap: 0.26rem; }
 .p2p-kyc-field span { color: var(--p2p-muted); font-size: 0.82rem; }
 
+.p2p-kyc-select {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: #111;
+  color: var(--p2p-text);
+  padding: 0 0.75rem;
+  font-size: 0.9rem;
+  font-family: 'Manrope', sans-serif;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  outline: none;
+}
+.p2p-kyc-select:focus { border-color: #00b8d4; }
+.p2p-kyc-select option { background: #111; color: #e2e8f0; }
+
 .p2p-kyc-field input[type='text'],
 .p2p-kyc-field input[type='file'] {
   width: 100%;

@@ -1156,14 +1156,30 @@
           <button id="kycCloseBtn" type="button" class="p2p-sec-btn" aria-label="Close KYC">Close</button>
         </div>
         <form id="kycForm" class="p2p-kyc-form">
-          <label class="p2p-kyc-field"><span>Aadhaar Number</span>
-            <input id="kycAadhaarInput" type="text" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="Enter 12-digit Aadhaar number" required />
+          <label class="p2p-kyc-field"><span>Full Legal Name</span>
+            <input id="kycLegalNameInput" type="text" autocomplete="name" placeholder="As on government ID" required />
           </label>
-          <label class="p2p-kyc-field"><span>Aadhaar Front Image</span>
+          <label class="p2p-kyc-field"><span>ID Type</span>
+            <select id="kycIdTypeInput" class="p2p-kyc-select" required>
+              <option value="">Select ID Type</option>
+              <option value="aadhaar">Aadhaar Card</option>
+              <option value="passport">Passport</option>
+              <option value="driving_license">Driving License</option>
+              <option value="voter_id">Voter ID</option>
+            </select>
+          </label>
+          <label class="p2p-kyc-field" id="kycAadhaarNumField"><span>Aadhaar Number</span>
+            <input id="kycAadhaarInput" type="text" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="Enter 12-digit Aadhaar number" />
+          </label>
+          <label class="p2p-kyc-field"><span>ID Front Image</span>
             <input id="kycAadhaarFrontInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" required />
             <small id="kycAadhaarFrontMeta">Upload clear front side image.</small>
           </label>
-          <label class="p2p-kyc-field"><span>Selfie With Aadhaar</span>
+          <label class="p2p-kyc-field"><span>ID Back Image</span>
+            <input id="kycAadhaarBackInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" required />
+            <small>Upload clear back side image.</small>
+          </label>
+          <label class="p2p-kyc-field"><span>Selfie With Document</span>
             <input id="kycSelfieInput" type="file" accept="image/png,image/jpeg,image/jpg,image/webp" required />
             <small id="kycSelfieMeta">Face and document must be clearly visible in one frame.</small>
           </label>
@@ -2707,6 +2723,20 @@ function closeMerchantBadgeSheet() {
   if (!s) return;
   s.style.display = 'none';
   document.body.style.overflow = '';
+}
+
+function spToggleFaq(row) {
+  var cat = row.closest('.sp-faq-cat');
+  if (!cat) return;
+  var isOpen = cat.classList.contains('open');
+  // close all open categories in the same list
+  var list = cat.closest('.sp-faq-list');
+  if (list) {
+    list.querySelectorAll('.sp-faq-cat.open').forEach(function(el) {
+      el.classList.remove('open');
+    });
+  }
+  if (!isOpen) cat.classList.add('open');
 }
 </script>
 </body>

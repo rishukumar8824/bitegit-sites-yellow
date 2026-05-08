@@ -127,9 +127,12 @@ const kycBackdrop = document.getElementById('kycBackdrop');
 const kycCloseBtn = document.getElementById('kycCloseBtn');
 const kycForm = document.getElementById('kycForm');
 const kycStatusText = document.getElementById('kycStatusText');
+const kycLegalNameInput = document.getElementById('kycLegalNameInput');
+const kycIdTypeInput = document.getElementById('kycIdTypeInput');
 const kycAadhaarInput = document.getElementById('kycAadhaarInput');
 const kycAadhaarFrontInput = document.getElementById('kycAadhaarFrontInput');
 const kycAadhaarFrontMeta = document.getElementById('kycAadhaarFrontMeta');
+const kycAadhaarBackInput = document.getElementById('kycAadhaarBackInput');
 const kycSelfieInput = document.getElementById('kycSelfieInput');
 const kycSelfieMeta = document.getElementById('kycSelfieMeta');
 const kycConsent = document.getElementById('kycConsent');
@@ -2434,18 +2437,30 @@ async function submitKycForm(event) {
     return;
   }
 
+  const legalName = String(kycLegalNameInput?.value || '').trim();
+  if (!legalName) {
+    setKycHint('Enter your full legal name.', 'error');
+    return;
+  }
+  const idType = String(kycIdTypeInput?.value || '').trim();
+  if (!idType) {
+    setKycHint('Select an ID type.', 'error');
+    return;
+  }
+
   const aadhaarNumber = String(kycAadhaarInput?.value || '')
     .replace(/\D/g, '')
     .slice(0, 12);
-  if (!/^\d{12}$/.test(aadhaarNumber)) {
+  if (idType === 'aadhaar' && !/^\d{12}$/.test(aadhaarNumber)) {
     setKycHint('Enter a valid 12-digit Aadhaar number.', 'error');
     return;
   }
 
   const aadhaarFile = kycAadhaarFrontInput?.files?.[0] || null;
+  const aadhaarBackFile = kycAadhaarBackInput?.files?.[0] || null;
   const selfieFile = kycSelfieInput?.files?.[0] || null;
-  if (!aadhaarFile || !selfieFile) {
-    setKycHint('Upload Aadhaar front and selfie with document.', 'error');
+  if (!aadhaarFile || !aadhaarBackFile || !selfieFile) {
+    setKycHint('Upload ID front, ID back, and selfie with document.', 'error');
     return;
   }
   if (!kycConsent?.checked) {
@@ -2461,6 +2476,7 @@ async function submitKycForm(event) {
   try {
     setKycHint('Optimizing document images...', '');
     const aadhaarFrontImage = await compressImageForKyc(aadhaarFile);
+    const aadhaarBackImage = await compressImageForKyc(aadhaarBackFile);
     const selfieWithDocumentImage = await compressImageForKyc(selfieFile);
 
     setKycHint('Running AI face match verification...', '');
@@ -2468,8 +2484,11 @@ async function submitKycForm(event) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        legalName,
+        idType,
         aadhaarNumber,
         aadhaarFrontImage,
+        aadhaarBackImage,
         selfieWithDocumentImage,
         consent: true
       })
@@ -5769,6 +5788,15 @@ if (kycSelfieInput) {
   kycSelfieInput.addEventListener('change', () => {
     const file = kycSelfieInput.files?.[0] || null;
     setKycFileMeta(kycSelfieMeta, file, 'Face and document must be clearly visible in one frame.');
+  });
+}
+
+if (kycIdTypeInput) {
+  kycIdTypeInput.addEventListener('change', () => {
+    const aadhaarNumField = document.getElementById('kycAadhaarNumField');
+    if (aadhaarNumField) {
+      aadhaarNumField.style.display = kycIdTypeInput.value === 'aadhaar' ? '' : 'none';
+    }
   });
 }
 

@@ -413,7 +413,14 @@ async function handleSubmit(event) {
 
   if (state.mode === MODE_SIGNUP) {
     endpoint = '/auth/register';
-    payload = { email, password, otpCode };
+    payload = {
+      email, password, otpCode,
+      fullName: (document.getElementById('fullNameInput')?.value || '').trim(),
+      mobile: (document.getElementById('mobileInput')?.value || '').trim(),
+      country: (document.getElementById('countryInput')?.value || '').trim(),
+      dob: (document.getElementById('dobInput')?.value || '').trim(),
+      referral: (document.getElementById('referralInput')?.value || '').trim(),
+    };
   } else if (state.mode === MODE_FORGOT) {
     endpoint = '/auth/forgot-password/reset';
     payload = { email, otpCode, newPassword: password };

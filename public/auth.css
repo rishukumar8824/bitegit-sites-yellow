@@ -584,3 +584,36 @@ body.auth-qr-open {
     padding: 0.85rem;
   }
 }
+
+/* Signup-only fields */
+.signup-only { display: none; }
+body.auth-signup-mode .signup-only { display: block; }
+
+.auth-select,
+.auth-dob {
+  width: 100%;
+  background: var(--auth-input, #1a1b1f);
+  color: var(--auth-text, #e2e8f0);
+  border: 1px solid var(--auth-border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.9rem;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.auth-select:focus,
+.auth-dob:focus {
+  border-color: #00b8d4;
+}
+.auth-select option {
+  background: #1a1b1f;
+  color: #e2e8f0;
+}
+
+body.auth-signup-mode .auth-select,
+body.auth-signup-mode .auth-dob {
+  min-height: 36px;
+  font-size: 0.84rem;
+}

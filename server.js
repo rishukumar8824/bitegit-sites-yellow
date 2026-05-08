@@ -2181,6 +2181,8 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
     aadhaarFrontImage = extractKycImageData(req.body?.aadhaarFrontImage, 'Aadhaar front');
     aadhaarBackImage = req.body?.aadhaarBackImage ? extractKycImageData(req.body?.aadhaarBackImage, 'Aadhaar back') : null;
     selfieWithDocumentImage = extractKycImageData(req.body?.selfieWithDocumentImage, 'Selfie with document');
+    const legalName = String(req.body?.legalName || '').trim().slice(0, 100);
+    const idType = String(req.body?.idType || 'aadhaar').trim().slice(0, 30);
   } catch (error) {
     return res.status(400).json({ message: error.message || 'Invalid KYC submission payload.' });
   }
@@ -2226,6 +2228,8 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
     await repos.upsertP2PKycRequest(userId, email, {
       requestId,
       status: nextStatus,
+      legalName,
+      idType,
       aadhaarMasked: maskAadhaar(aadhaarDigits),
       aadhaarHash: hashSensitive(aadhaarDigits),
       aadhaarFrontImage: encryptText(aadhaarFrontImage.dataUrl),

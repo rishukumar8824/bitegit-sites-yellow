@@ -431,6 +431,11 @@ function registerAuthRoutes(app, deps) {
     const email = createEmailFromInput(req.body?.email);
     const password = String(req.body?.password || '').trim();
     const otpCode = String(req.body?.otpCode || '').trim();
+    const fullName = String(req.body?.fullName || '').trim().slice(0, 100);
+    const mobile = String(req.body?.mobile || '').trim().slice(0, 20);
+    const country = String(req.body?.country || '').trim().slice(0, 5);
+    const dob = String(req.body?.dob || '').trim().slice(0, 12);
+    const referral = String(req.body?.referral || '').trim().slice(0, 30);
     const ipAddress = normalizeIp(req);
     const userAgent = String(req.headers['user-agent'] || '').trim().slice(0, 1024);
 
@@ -486,7 +491,12 @@ function registerAuthRoutes(app, deps) {
       }
 
       await repos.setP2PCredential(email, repos.hashPassword(password), {
-        role: 'USER'
+        role: 'USER',
+        fullName,
+        mobile,
+        country,
+        dob,
+        referral,
       });
 
       const user = buildP2PUserFromEmail(email, 'USER');
