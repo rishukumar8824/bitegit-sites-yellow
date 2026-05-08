@@ -7675,14 +7675,22 @@ function submitKycAdvance() {
       })
     });
   }).then(function(res) {
+    if (res.status === 401) {
+      throw new Error('Session expired. Please log in again and retry.');
+    }
+    if (res.status === 413) {
+      throw new Error('Images are too large for upload. Please use smaller images.');
+    }
+    var contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('Server error (' + res.status + '). Please try again.');
+    }
     return res.json().then(function(data){ return { ok: res.ok, data: data }; });
   }).then(function(result) {
     if (result.ok) {
       _kycHint('kycAdvHint','✅ Documents submitted! Review takes 24–48 hrs.','success');
       if (currentUser) {
-        currentUser.kyc = Object.assign({}, currentUser.kyc || {}, {
-          status: 'PENDING_REVIEW'
-        });
+        currentUser.kyc = Object.assign({}, currentUser.kyc || {}, { status: 'PENDING_REVIEW' });
       }
       var badge = document.getElementById('kycStatusBadge');
       if(badge){ badge.textContent='Under Review'; badge.style.cssText='font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:999px;background:rgba(168,255,62,0.12);border:1px solid rgba(168,255,62,0.3);color:#a8ff3e;margin-left:6px;'; }
@@ -7702,7 +7710,8 @@ function submitKycAdvance() {
       if(btn){ btn.disabled=false; btn.textContent='Submit for Verification'; }
     }
   }).catch(function(err) {
-    _kycHint('kycAdvHint','Network error. Please check connection and retry.','error');
+    var msg = (err && err.message) || 'Submission failed. Please try again.';
+    _kycHint('kycAdvHint', msg, 'error');
     if(btn){ btn.disabled=false; btn.textContent='Submit for Verification'; }
   }).finally(function() {
     window.__p2pKycSubmitInFlight = false;
