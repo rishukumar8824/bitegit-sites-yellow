@@ -3208,7 +3208,10 @@ body.coinflare-page.cf-chart-open .cf-signup-link {
   }
 
   .cf-header-inner {
-    min-height: 64px;
+    height: 52px;
+    min-height: 52px;
+    padding: 0 0.5rem;
+    align-items: center;
   }
 
   .cf-header {
