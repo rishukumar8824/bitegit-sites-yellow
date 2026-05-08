@@ -3254,6 +3254,11 @@ body.coinflare-page.cf-chart-open .cf-signup-link {
     background: transparent !important;
   }
 
+  .cf-actions .cf-signup {
+    padding-top: 5px;
+    padding-bottom: 0px;
+  }
+
   .cf-user-panel {
     padding: 1rem;
     gap: 0.72rem;
