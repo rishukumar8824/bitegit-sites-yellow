@@ -907,22 +907,38 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       return null;
     }
 
-    const profile = await adminUserProfiles.findOne({ userId: normalizedUserId });
+    // Run profile + credential lookups in parallel
+    const [profile, credByUserId] = await Promise.all([
+      adminUserProfiles.findOne({ userId: normalizedUserId }),
+      p2pCredentials.findOne({ userId: normalizedUserId })
+    ]);
     let email = String(profile?.email || '').trim().toLowerCase();
+    let credential = credByUserId || null;
 
-    // Fallback: if no profile entry, derive email from p2pCredentials by matching derived userId
-    let credential = email ? await p2pCredentials.findOne({ email }) : null;
-    if (!email) {
-      const allCreds = await p2pCredentials.find({}, { projection: { email: 1 } }).toArray();
-      const matched = allCreds.find(c => makeP2PUserId(String(c.email || '').trim().toLowerCase()) === normalizedUserId);
+    // If credential not found by userId field, try email from profile
+    if (!credential && email) {
+      credential = await p2pCredentials.findOne({ email });
+    }
+    // Last resort: scan all credentials and match by derived userId
+    if (!credential && !email) {
+      const allCreds = await p2pCredentials.find({}, { projection: { email: 1, userId: 1 } }).toArray();
+      const matched = allCreds.find(c => {
+        if (c.userId === normalizedUserId) return true;
+        return makeP2PUserId(String(c.email || '').trim().toLowerCase()) === normalizedUserId;
+      });
       if (matched) {
         email = String(matched.email || '').trim().toLowerCase();
         credential = await p2pCredentials.findOne({ email });
       }
     }
-    const wallet = await wallets.findOne({ userId: normalizedUserId });
-    const p2pOrderCount = await p2pOrders.countDocuments({ $or: [{ buyerUserId: normalizedUserId }, { sellerUserId: normalizedUserId }] });
-    const tradeOrderCount = await tradeOrders.countDocuments({ userId: normalizedUserId });
+    if (!email && credential) email = String(credential.email || '').trim().toLowerCase();
+
+    // Run all remaining queries in parallel
+    const [wallet, p2pOrderCount, tradeOrderCount] = await Promise.all([
+      wallets.findOne({ userId: normalizedUserId }),
+      p2pOrders.countDocuments({ $or: [{ buyerUserId: normalizedUserId }, { sellerUserId: normalizedUserId }] }),
+      tradeOrders.countDocuments({ userId: normalizedUserId })
+    ]);
 
     return {
       userId: normalizedUserId,

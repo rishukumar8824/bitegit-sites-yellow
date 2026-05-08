@@ -83,7 +83,7 @@ function createAdminControllers({
   }
 
   function setAdminCookies(res, tokenPair) {
-    setCookie(res, cookieNames.accessToken, tokenPair.accessToken, 15 * 60);
+    setCookie(res, cookieNames.accessToken, tokenPair.accessToken, 24 * 60 * 60);
     setCookie(res, cookieNames.refreshToken, tokenPair.refreshToken, 7 * 24 * 60 * 60);
   }
 

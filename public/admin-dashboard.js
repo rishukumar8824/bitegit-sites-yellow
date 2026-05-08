@@ -157,7 +157,24 @@ function setActionButtonLoading(button, loading, loadingText = 'Processing...') 
   }
 }
 
-async function apiRequest(path, options = {}) {
+let _adminRefreshInFlight = null;
+async function _tryRefreshAdminToken() {
+  if (_adminRefreshInFlight) return _adminRefreshInFlight;
+  _adminRefreshInFlight = fetch(`${API_BASE}/admin/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }
+  }).then(r => {
+    _adminRefreshInFlight = null;
+    return r.ok;
+  }).catch(() => {
+    _adminRefreshInFlight = null;
+    return false;
+  });
+  return _adminRefreshInFlight;
+}
+
+async function apiRequest(path, options = {}, _retried = false) {
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
     headers: {
@@ -168,6 +185,10 @@ async function apiRequest(path, options = {}) {
   });
 
   if (response.status === 401) {
+    if (!_retried && !path.includes('/auth/refresh')) {
+      const refreshed = await _tryRefreshAdminToken();
+      if (refreshed) return apiRequest(path, options, true);
+    }
     window.location.href = '/admin/login';
     throw new Error('Unauthorized');
   }
