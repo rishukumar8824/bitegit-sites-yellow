@@ -2176,17 +2176,23 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
   let aadhaarFrontImage = null;
   let aadhaarBackImage = null;
   let selfieWithDocumentImage = null;
+  let legalName = '';
+  let idType    = 'aadhaar';
+  let dob       = '';
+  let mobile    = '';
+  let address   = '';
+  let country   = '';
   try {
-    aadhaarDigits = normalizeAadhaarNumber(req.body?.aadhaarNumber);
-    aadhaarFrontImage = extractKycImageData(req.body?.aadhaarFrontImage, 'Aadhaar front');
-    aadhaarBackImage = req.body?.aadhaarBackImage ? extractKycImageData(req.body?.aadhaarBackImage, 'Aadhaar back') : null;
+    aadhaarDigits           = normalizeAadhaarNumber(req.body?.aadhaarNumber);
+    aadhaarFrontImage       = extractKycImageData(req.body?.aadhaarFrontImage, 'Aadhaar front');
+    aadhaarBackImage        = req.body?.aadhaarBackImage ? extractKycImageData(req.body?.aadhaarBackImage, 'Aadhaar back') : null;
     selfieWithDocumentImage = extractKycImageData(req.body?.selfieWithDocumentImage, 'Selfie with document');
-    const legalName = String(req.body?.legalName || req.body?.fullName || '').trim().slice(0, 100);
-    const idType    = String(req.body?.idType || 'aadhaar').trim().slice(0, 30);
-    const dob       = String(req.body?.dob || '').trim().slice(0, 12);
-    const mobile    = String(req.body?.mobile || '').trim().slice(0, 20);
-    const address   = String(req.body?.address || '').trim().slice(0, 200);
-    const country   = String(req.body?.country || '').trim().slice(0, 5);
+    legalName = String(req.body?.legalName || req.body?.fullName || '').trim().slice(0, 100);
+    idType    = String(req.body?.idType    || 'aadhaar').trim().slice(0, 30);
+    dob       = String(req.body?.dob       || '').trim().slice(0, 12);
+    mobile    = String(req.body?.mobile    || '').trim().slice(0, 20);
+    address   = String(req.body?.address   || '').trim().slice(0, 200);
+    country   = String(req.body?.country   || '').trim().slice(0, 5);
   } catch (error) {
     return res.status(400).json({ message: error.message || 'Invalid KYC submission payload.' });
   }
