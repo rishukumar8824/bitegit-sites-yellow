@@ -6095,10 +6095,12 @@ document.querySelectorAll('[data-mobile-tab-target]').forEach((link) => {
 });
 
 window.addEventListener('hashchange', () => {
+  if (document.body.classList.contains('kyc-screen-open')) return;
   syncMobileTabFromHash({ refreshP2P: false });
 });
 
 window.addEventListener('resize', () => {
+  if (document.body.classList.contains('kyc-screen-open')) return;
   if (!isMobileViewport()) {
     setMobileNavActive('p2p');
     document.body.dataset.mobileTab = 'p2p';
@@ -7549,11 +7551,22 @@ function submitFundPassword() {
 
 // ===== END PROFILE FEATURE SCREENS =====
 
+function _openKycMobScreen(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.style.setProperty('display','flex','important');
+  el.style.flexDirection = 'column';
+  // Lock body scroll so Android keyboard open doesn't scroll page behind screen
+  document.body.classList.add('mob-screen-open');
+  document.body.classList.add('kyc-screen-open');
+  // Prevent hash-driven nav from interfering while KYC is open
+  document.body.dataset.mobileTab = 'kyc';
+}
+
 function openKycScreen() {
   var kycStatus = normalizeKycStatus(currentUser && currentUser.kyc && currentUser.kyc.status);
   if (kycStatus === 'PENDING_REVIEW') {
-    var el = document.getElementById('kycUnderReviewScreen');
-    if (el) { el.style.setProperty('display','flex','important'); el.style.flexDirection='column'; }
+    _openKycMobScreen('kycUnderReviewScreen');
     return;
   }
   if (kycStatus === 'REJECTED') {
@@ -7563,27 +7576,29 @@ function openKycScreen() {
     var rejReason = currentUser && currentUser.kyc && currentUser.kyc.rejectionReason || '';
     if (rejReasonText) rejReasonText.textContent = rejReason || 'No specific reason provided.';
     if (rejReasonBox) rejReasonBox.style.display = rejReason ? '' : 'none';
-    if (rejScreen) { rejScreen.style.setProperty('display','flex','important'); rejScreen.style.flexDirection='column'; }
+    _openKycMobScreen('kycRejectedScreen');
     return;
   }
-  if (kycStatus === 'VERIFIED') {
-    return;
-  }
-  document.getElementById('kycBasicScreen').style.setProperty('display','flex','important');
-  document.getElementById('kycBasicScreen').style.flexDirection = 'column';
+  if (kycStatus === 'VERIFIED') return;
+  _openKycMobScreen('kycBasicScreen');
 }
 
 function closeKycScreens() {
-  ['kycBasicScreen','kycAdvanceScreen'].forEach(function(id){
+  ['kycBasicScreen','kycAdvanceScreen','kycUnderReviewScreen','kycRejectedScreen'].forEach(function(id){
     var el = document.getElementById(id);
     if(el) el.style.display = 'none';
   });
+  document.body.classList.remove('kyc-screen-open');
+  document.body.classList.remove('mob-screen-open');
+  // Restore tab from actual hash
+  var h = window.location.hash.replace('#','');
+  var tab = ['orders','ads','profile'].includes(h) ? h : 'p2p';
+  document.body.dataset.mobileTab = tab;
 }
 
 function backToKycBasic() {
   document.getElementById('kycAdvanceScreen').style.display = 'none';
-  document.getElementById('kycBasicScreen').style.setProperty('display','flex','important');
-  document.getElementById('kycBasicScreen').style.flexDirection = 'column';
+  _openKycMobScreen('kycBasicScreen');
 }
 
 function kycFileChanged(input, hintId, thumbId, cardId) {

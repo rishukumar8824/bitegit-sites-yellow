@@ -2206,7 +2206,9 @@ body.p2p-kyc-open { overflow: hidden; }
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
+  /* Use dvh so screen height stays fixed when Android keyboard opens */
+  height: 100dvh;
+  height: 100vh; /* fallback for older browsers */
   width: 100%;
   background: #000;
   z-index: 1500;
