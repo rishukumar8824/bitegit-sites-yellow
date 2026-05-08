@@ -116,14 +116,18 @@ function escapeHtml(value) {
 function statusBadge(status) {
   const normalized = String(status || '').trim().toUpperCase();
   let css = 'badge';
+  let label = normalized || '-';
   if (['ACTIVE', 'APPROVED', 'OPEN', 'SUCCESS', 'RELEASED', 'CONNECTED', 'ENABLED', 'VERIFIED', 'COMPLETED'].includes(normalized)) {
     css += ' success';
-  } else if (['PENDING', 'IN_PROGRESS', 'PAID', 'PENDING_REVIEW', 'NORMAL'].includes(normalized)) {
+  } else if (normalized === 'PENDING_REVIEW') {
+    css += ' info';
+    label = 'Doc Submitted';
+  } else if (['PENDING', 'IN_PROGRESS', 'PAID', 'NORMAL'].includes(normalized)) {
     css += ' warning';
   } else if (['BANNED', 'REJECTED', 'FAILURE', 'CANCELLED', 'DISPUTED', 'DISABLED', 'ERROR', 'CLOSED', 'CRITICAL'].includes(normalized)) {
     css += ' danger';
   }
-  return `<span class="${css}">${normalized || '-'}</span>`;
+  return `<span class="${css}">${label}</span>`;
 }
 
 function showMessage(text, type = 'info') {
