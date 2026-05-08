@@ -1057,7 +1057,7 @@
     </div>
     <div class="network-card" id="wdNetERC20" onclick="selectWdNetwork('ERC20')">
       <div class="net-name">ERC20 (Ethereum)</div>
-      <div class="net-details">Fee: 5 USDT · Min withdrawal: 10 USDT<br>Crediting time ≈ 5 min</div>
+      <div class="net-details">Fee: Free · Min withdrawal: 2 USDT<br>Crediting time ≈ 5 min</div>
     </div>
   </div>
 </div>
@@ -1738,7 +1738,7 @@
     'MORPH': { name:'Morph (Morph)',               fee:1,  min:2,  sub:'Fee: 1 USDT · Min: 2 USDT' },
     'TRC20': { name:'TRC20 (Tron)',                fee:1,  min:2,  sub:'Fee: 1 USDT · Min: 2 USDT' },
     'BEP20': { name:'BEP20 (Binance Smart Chain)', fee:1,  min:2,  sub:'Fee: 1 USDT · Min: 2 USDT' },
-    'ERC20': { name:'ERC20 (Ethereum)',             fee:5,  min:10, sub:'Fee: 5 USDT · Min: 10 USDT' }
+    'ERC20': { name:'ERC20 (Ethereum)',             fee:0,  min:2,  sub:'Fee: Free · Min: 2 USDT' }
   };
   var currentWdNetwork = 'TRC20';
   var WD_METHOD_MAP = {}; // network key → numeric method id from API
