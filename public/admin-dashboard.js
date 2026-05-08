@@ -729,7 +729,15 @@ async function loadWallet() {
       const canReview = status === 'PENDING';
       const disabledClass = canReview ? '' : ' opacity-60';
       const disabledAttr = canReview ? '' : ' disabled';
-      const proofLink = row.proofUrl ? `<a href="${row.proofUrl}" target="_blank" style="color:#00b8d4;font-size:11px;">View Proof</a>` : '';
+      const proofHtml = row.proofUrl
+        ? `<div style="margin:10px 0 6px;">
+            <p style="font-size:11px;color:#848e9c;margin:0 0 5px;">Payment Proof:</p>
+            <img src="${row.proofUrl}" alt="Payment proof"
+              onclick="window.open('${row.proofUrl}','_blank')"
+              style="max-width:100%;max-height:180px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;object-fit:contain;display:block;"
+              title="Click to open full image"/>
+          </div>`
+        : '<p style="font-size:11px;color:#848e9c;margin:6px 0;">No proof uploaded</p>';
       return `
       <article class="list-item">
         <div class="flex items-start justify-between gap-2">
@@ -740,11 +748,12 @@ async function loadWallet() {
           </div>
           ${statusBadge(status)}
         </div>
-        <p class="mt-2 text-sm text-slate-200">${row.coin || 'USDT'} <strong>${formatNumber(row.amount || 0, 2)}</strong> • ${row.network || ''}</p>
-        <p class="mt-1 text-xs text-slate-500">Tx: ${row.txHash || row.txid || '-'} ${proofLink}</p>
+        <p class="mt-2 text-sm text-slate-200">${row.coin || 'USDT'} <strong style="color:#22c55e;font-size:15px;">${formatNumber(row.amount || 0, 2)}</strong> • ${row.network || ''}</p>
+        <p class="mt-1 text-xs text-slate-500">TxID: ${escapeHtml(row.txHash || row.txid || 'Not provided')}</p>
+        ${proofHtml}
         <div class="mt-2 flex gap-2">
-          <button class="btn-primary${disabledClass}" data-deposit-action="approve" data-deposit-id="${row.id}"${disabledAttr}>Approve</button>
-          <button class="btn-danger${disabledClass}" data-deposit-action="reject" data-deposit-id="${row.id}"${disabledAttr}>Reject</button>
+          <button class="btn-primary${disabledClass}" data-deposit-action="approve" data-deposit-id="${row.id}"${disabledAttr}>✓ Approve</button>
+          <button class="btn-danger${disabledClass}" data-deposit-action="reject" data-deposit-id="${row.id}"${disabledAttr}>✕ Reject</button>
         </div>
       </article>
     `;
