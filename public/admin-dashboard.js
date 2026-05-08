@@ -130,6 +130,35 @@ function statusBadge(status) {
   return `<span class="${css}">${label}</span>`;
 }
 
+const DEFAULT_REJECT_REASON = 'Your KYC documents could not be verified. Please resubmit with clear, valid documents.';
+
+function showRejectReasonModal(defaultReason) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    overlay.innerHTML = `
+      <div style="background:#1a1d2e;border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:24px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="font-size:15px;font-weight:700;color:#e2e8f0;margin-bottom:6px;">❌ Reject KYC</div>
+        <div style="font-size:12px;color:#848e9c;margin-bottom:14px;">Enter the rejection reason. This will be shown to the user.</div>
+        <textarea id="rejectReasonInput" rows="3" style="width:100%;box-sizing:border-box;background:#0d0f1a;border:1px solid rgba(0,184,212,0.35);border-radius:8px;padding:10px 12px;font-size:13px;color:#e2e8f0;outline:none;resize:vertical;font-family:inherit;">${defaultReason||DEFAULT_REJECT_REASON}</textarea>
+        <div style="display:flex;gap:10px;margin-top:14px;">
+          <button id="rejectCancelBtn" style="flex:1;padding:9px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#848e9c;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+          <button id="rejectConfirmBtn" style="flex:1;padding:9px;border-radius:8px;border:none;background:linear-gradient(135deg,#f6465d,#c53030);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Reject KYC</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#rejectReasonInput');
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    overlay.querySelector('#rejectCancelBtn').onclick = () => { document.body.removeChild(overlay); resolve(null); };
+    overlay.querySelector('#rejectConfirmBtn').onclick = () => {
+      const val = input.value.trim();
+      document.body.removeChild(overlay);
+      resolve(val || DEFAULT_REJECT_REASON);
+    };
+  });
+}
+
 function showMessage(text, type = 'info') {
   dom.globalMessage.textContent = text;
   dom.globalMessage.classList.remove('hidden', 'border-emerald-500/40', 'text-emerald-300', 'bg-emerald-500/10', 'border-rose-500/40', 'text-rose-300', 'bg-rose-500/10', 'border-slate-700', 'text-slate-300', 'bg-slate-900/60');
@@ -2044,13 +2073,11 @@ async function handleUsersAction(event) {
 
     if (action === 'kyc') {
       const payload = await apiRequest(`/users/${encodeURIComponent(userId)}/kyc`);
-      const decision = window.prompt(`Current KYC: ${payload.kycStatus}. Enter decision (APPROVED/REJECTED/PENDING):`, payload.kycStatus || 'PENDING');
-      if (!decision) {
-        return;
-      }
-      const remarks = window.prompt('Remarks:', payload.remarks || '') || '';
+      const decision = 'REJECTED';
+      const remarks = await showRejectReasonModal(payload.remarks || '');
+      if (!remarks) return;
       await reviewKyc(userId, decision, remarks);
-      showMessage('KYC review saved.', 'success');
+      showMessage('KYC Rejected.', 'success');
       await loadUsers();
     }
 
@@ -2738,10 +2765,10 @@ async function upApproveKyc() {
 }
 
 async function upRejectKyc() {
-  const reason = window.prompt('Enter rejection reason:');
-  if (!reason || !reason.trim()) return;
+  const reason = await showRejectReasonModal();
+  if (!reason) return;
   try {
-    await reviewKyc(_upUserId, 'REJECTED', reason.trim());
+    await reviewKyc(_upUserId, 'REJECTED', reason);
     showMessage('KYC Rejected', 'success');
     await loadUpKyc();
     await loadUpOverview();
