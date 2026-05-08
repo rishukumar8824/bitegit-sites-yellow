@@ -292,6 +292,11 @@ function broadcastAdminNewUserEvent(payload) {
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   adminNewUserSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
 }
+const adminDepositSseClients = new Set();
+function broadcastAdminDepositEvent(payload) {
+  const msg = `data: ${JSON.stringify(payload)}\n\n`;
+  adminDepositSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
+}
 function getUserStreams(userId) {
   if (!p2pUserStreams.has(userId)) p2pUserStreams.set(userId, new Set());
   return p2pUserStreams.get(userId);
@@ -2521,6 +2526,18 @@ app.post(
           }
         });
       }
+
+      broadcastAdminDepositEvent({
+        type: 'new_deposit',
+        depositId: deposit.id,
+        userId: deposit.userId,
+        username: deposit.username || req.p2pUser.username,
+        email: deposit.email || req.p2pUser.email,
+        amount: deposit.amount,
+        coin: deposit.coin,
+        network: deposit.network,
+        createdAt: deposit.createdAt || new Date().toISOString()
+      });
 
       return res.status(201).json({
         message: 'Deposit request created. Awaiting admin confirmation.',
@@ -4796,6 +4813,24 @@ app.get('/api/admin/user/live-notify', async (req, res) => {
   res.write(': connected\n\n');
   const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) {} }, 20000);
   req.on('close', () => { clearInterval(ping); adminNewUserSseClients.delete(res); });
+});
+
+// ── Admin: Deposit request SSE ────────────────────────────────────────────────
+app.get('/api/admin/deposit/live-notify', async (req, res) => {
+  try {
+    const cookies = parseCookies(req);
+    const accessToken = String(cookies[ADMIN_ACCESS_COOKIE_NAME] || '').trim();
+    if (!accessToken) return res.status(401).end();
+  } catch(_) {}
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.flushHeaders();
+  adminDepositSseClients.add(res);
+  res.write(': connected\n\n');
+  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) {} }, 20000);
+  req.on('close', () => { clearInterval(ping); adminDepositSseClients.delete(res); });
 });
 
 // ── Admin: List all withdrawal requests ───────────────────────────────────────

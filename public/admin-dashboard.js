@@ -3442,6 +3442,7 @@ async function init() {
     connectSupportSSE();
     connectWithdrawalSSE();
     connectNewUserSSE();
+    connectDepositSSE();
     await pollSupportTickets();
     await refreshWithdrawalNotifications({ silent: true });
     setInterval(pollSupportTickets, 15000);
@@ -3497,6 +3498,46 @@ function connectNewUserSSE() {
     } catch(_) {}
   };
   _newUserSSE.onerror = () => setTimeout(connectNewUserSSE, 5000);
+}
+
+let _depositSSE = null;
+function connectDepositSSE() {
+  if (_depositSSE) { try { _depositSSE.close(); } catch(_) {} }
+  _depositSSE = new EventSource('/api/admin/deposit/live-notify');
+  _depositSSE.onmessage = (ev) => {
+    try {
+      const info = JSON.parse(ev.data);
+      if (info.type === 'new_deposit') {
+        addNotif('deposit', 'New Deposit Request', `${info.amount || ''} ${info.coin || 'USDT'} from ${info.username || info.email || 'User'}`);
+        showDepositNotification(info);
+        if (state.currentView === 'wallet') loadWallet().catch(() => {});
+      }
+    } catch(_) {}
+  };
+  _depositSSE.onerror = () => setTimeout(connectDepositSSE, 5000);
+}
+
+function showDepositNotification(info) {
+  const n = document.createElement('div');
+  n.style.cssText = `position:fixed;top:18px;right:18px;z-index:10001;
+    background:#141821;border:1px solid rgba(34,197,94,0.4);border-radius:14px;
+    padding:14px 18px;display:flex;align-items:flex-start;gap:12px;cursor:pointer;
+    box-shadow:0 8px 32px rgba(0,0,0,0.7);animation:slideInDown 0.3s cubic-bezier(.22,1,.36,1);max-width:340px;`;
+  n.innerHTML = `
+    <div style="width:38px;height:38px;border-radius:50%;background:rgba(34,197,94,0.12);border:2px solid rgba(34,197,94,0.35);
+                display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">⬇️</div>
+    <div style="flex:1;min-width:0;">
+      <p style="margin:0 0 2px;font-size:12px;font-weight:700;color:#22c55e;">New Deposit Request</p>
+      <p style="margin:0 0 2px;font-size:13px;font-weight:600;color:#eaecef;">${info.username || info.email || 'User'}</p>
+      <p style="margin:0 0 2px;font-size:13px;color:#eaecef;font-weight:700;">${info.amount} ${info.coin || 'USDT'} <span style="font-size:11px;color:#848e9c;">(${info.network || ''})</span></p>
+      <p style="margin:0;font-size:11px;color:#848e9c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${info.email || ''}</p>
+      <p style="margin:4px 0 0;font-size:11px;color:#22c55e;font-weight:600;">👆 Click to review</p>
+    </div>
+    <button onclick="event.stopPropagation();this.closest('[style]').remove();"
+      style="background:none;border:none;color:#848e9c;cursor:pointer;font-size:16px;padding:0;flex-shrink:0;">✕</button>`;
+  n.addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') return; n.remove(); changeView('wallet'); });
+  document.body.appendChild(n);
+  setTimeout(() => { if (n.isConnected) n.remove(); }, 12000);
 }
 
 function showNewUserNotification(info) {
