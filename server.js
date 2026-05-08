@@ -2286,6 +2286,16 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
       dob
     });
 
+    // Sync kycStatus to adminUserProfiles so admin user list shows correct badge
+    try {
+      const cols = getCollections();
+      await cols.adminUserProfiles.updateOne(
+        { userId },
+        { $set: { kycStatus: nextStatus, email, updatedAt: new Date() } },
+        { upsert: true }
+      );
+    } catch (_syncErr) { /* non-critical */ }
+
     const kycProfile = buildP2PKycProfileFromCredential(updatedCredential || {});
     if (auditLogService) {
       await auditLogService.safeLog({
