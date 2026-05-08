@@ -403,7 +403,6 @@ const BITEGIT_API = (window.BITEGIT_API_BASE || 'http://localhost:3000/api/v1');
     setScreen('home');
   }
 
-  initLiveChat();
 })();
 
 // ══════════════════════════════════════════════
@@ -627,3 +626,6 @@ const BITEGIT_API = (window.BITEGIT_API_BASE || 'http://localhost:3000/api/v1');
   window.closeLiveChat = closeLiveChat;
   window.initLiveChat = initLiveChat;
 }());
+
+// Init live chat after module has loaded
+window.initLiveChat?.();
