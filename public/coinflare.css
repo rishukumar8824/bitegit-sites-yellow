@@ -282,7 +282,7 @@ a {
 .cf-apk-cta {
   min-height: 30px;
   border-radius: 7px;
-  padding: 2px 0.85rem 0;
+  padding: 0 0.85rem;
   border: 1px solid var(--cf-line);
   background: transparent;
   color: var(--cf-text);
