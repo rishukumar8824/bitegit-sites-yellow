@@ -2218,22 +2218,9 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
       selfieWithDocumentImage
     });
 
-    // Auto-approve when face match is available AND passed.
-    // Auto-reject when face match is available AND failed (score too low).
-    // Fall back to manual PENDING_REVIEW when face match provider is unavailable.
-    let nextStatus;
-    let rejectionReason = '';
-    if (faceMatch.available && faceMatch.passed) {
-      nextStatus = 'VERIFIED';
-    } else if (faceMatch.available && !faceMatch.passed) {
-      nextStatus = 'REJECTED';
-      rejectionReason = faceMatch.reason === 'face_very_different'
-        ? 'Face in selfie does not match the Aadhaar photo. Please re-submit with a clear selfie.'
-        : `Face similarity score (${faceMatch.score}/100) is below the required threshold (${KYC_FACE_MATCH_THRESHOLD}/100). Please re-submit with a clearer photo.`;
-    } else {
-      // Face match service unavailable — queue for manual admin review
-      nextStatus = 'PENDING_REVIEW';
-    }
+    // Always queue for manual admin review — admin approves/rejects from dashboard.
+    const nextStatus = 'PENDING_REVIEW';
+    const rejectionReason = '';
 
     await repos.upsertP2PKycRequest(userId, email, {
       requestId,
