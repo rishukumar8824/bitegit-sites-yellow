@@ -7840,8 +7840,11 @@ function initMobPostAdScreen() {
       window._myAdsCache = {};
       offers.forEach(function(o) { window._myAdsCache[o.id] = o; });
 
-      var hasBuy  = offers.some(function(o){ return o.side === 'buy'; });
-      var hasSell = offers.some(function(o){ return o.side === 'sell'; });
+      // side field = TAKER's side (opposite of ad type):
+      //   SELL ad → side:'buy'  |  BUY ad → side:'sell'
+      // Use adType/type field directly for correct detection
+      var hasSell = offers.some(function(o){ return (o.type||o.adType||'').toUpperCase()==='SELL' || o.side==='buy'; });
+      var hasBuy  = offers.some(function(o){ return (o.type||o.adType||'').toUpperCase()==='BUY'  || o.side==='sell'; });
       var bothFull = hasBuy && hasSell;
 
       if (bothFull) {
@@ -7854,8 +7857,11 @@ function initMobPostAdScreen() {
         // Has one ad but other side is free — update note, but don't override tab display
         if (adLimitMsg) {
           adLimitMsg.style.display = 'block';
-          adLimitMsg.textContent = 'You have 1 active ' + (hasBuy ? 'Buy' : 'Sell') + ' ad. You can still post a ' + (hasBuy ? 'Sell' : 'Buy') + ' ad.';
+          adLimitMsg.textContent = 'You have 1 active ' + (hasSell ? 'Sell' : 'Buy') + ' ad. You can still post a ' + (hasSell ? 'Buy' : 'Sell') + ' ad.';
         }
+        // Auto-select the available (free) side in the form
+        var typeInput = document.getElementById('mobAdTypeInput');
+        if (typeInput) typeInput.value = hasSell ? 'buy' : 'sell';
         var activeTabEl = document.querySelector('.mob-ptab.active[data-ptab]');
         var isMyAdsTab = activeTabEl && activeTabEl.getAttribute('data-ptab') === 'myads';
         if (createSection) createSection.style.display = isMyAdsTab ? 'none' : 'block';
