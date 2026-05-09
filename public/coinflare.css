@@ -555,8 +555,12 @@ body.coinflare-page.cf-chart-open .cf-signup-link {
 /* Logged-in user action grid */
 .cf-user-action-section {
   width: 100%;
-  padding: 28px 0 32px;
+  padding: 0 0 24px;
   background: #000;
+  display: block;
+}
+.cf-user-action-section .cf-action-grid {
+  margin-top: 20px;
 }
 .cf-action-grid {
   display: grid;
