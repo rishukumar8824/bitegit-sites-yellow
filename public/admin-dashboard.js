@@ -1053,6 +1053,106 @@ function buildDisputeMsgBubble(msg, buyerLabel, sellerLabel) {
     + '</div>';
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Trade Chat Drawer — admin can view & reply to any live order's chat
+// ─────────────────────────────────────────────────────────────────────────────
+var _tradeChatOrderId  = null;
+var _tradeChatBuyer    = '';
+var _tradeChatSeller   = '';
+
+async function openTradeChatDrawer(orderId, buyer, seller) {
+  _tradeChatOrderId = orderId;
+  _tradeChatBuyer   = buyer  || '—';
+  _tradeChatSeller  = seller || '—';
+
+  // Show drawer
+  var drawer = document.getElementById('tradeChatDrawer');
+  if (drawer) drawer.style.display = 'block';
+
+  // Meta line
+  var meta = document.getElementById('tradeChatOrderMeta');
+  if (meta) meta.textContent = '…' + orderId.slice(-8).toUpperCase() + ' · Buyer: ' + _tradeChatBuyer + ' · Seller: ' + _tradeChatSeller;
+
+  // Quick reply pills
+  var qr = document.getElementById('tradeChatQuickReplies');
+  if (qr) {
+    qr.innerHTML = ADMIN_QUICK_REPLIES.map(function(q, i) {
+      return '<button onclick="tradeChatQuickReply(' + i + ')" '
+        + 'style="flex-shrink:0;background:rgba(0,184,212,0.1);border:1px solid rgba(0,184,212,0.25);'
+        + 'color:#00b8d4;font-size:11px;border-radius:16px;padding:4px 12px;cursor:pointer;white-space:nowrap;font-weight:500;">'
+        + escapeHtml(q.label) + '</button>';
+    }).join('');
+  }
+
+  await loadTradeChatMessages();
+}
+
+function closeTradeChatDrawer() {
+  var drawer = document.getElementById('tradeChatDrawer');
+  if (drawer) drawer.style.display = 'none';
+  _tradeChatOrderId = null;
+}
+
+async function loadTradeChatMessages() {
+  if (!_tradeChatOrderId) return;
+  var box = document.getElementById('tradeChatMessages');
+  if (!box) return;
+  box.innerHTML = '<div style="text-align:center;padding:20px;color:rgba(255,255,255,0.3);font-size:12px;">Loading…</div>';
+  try {
+    var res = await fetch('/api/admin/p2p/orders/' + encodeURIComponent(_tradeChatOrderId) + '/chat', { credentials: 'include' });
+    var data = await res.json().catch(function(){ return {}; });
+    var msgs = Array.isArray(data.messages) ? data.messages : [];
+    if (msgs.length === 0) {
+      box.innerHTML = '<div style="text-align:center;padding:24px;color:rgba(255,255,255,0.3);font-size:13px;">No messages yet in this order.</div>';
+    } else {
+      box.innerHTML = msgs.map(function(m){ return buildDisputeMsgBubble(m, _tradeChatBuyer, _tradeChatSeller); }).join('');
+      box.scrollTop = box.scrollHeight;
+    }
+  } catch(e) {
+    box.innerHTML = '<div style="text-align:center;padding:20px;color:#f87171;font-size:12px;">Failed to load messages.</div>';
+  }
+}
+
+function tradeChatQuickReply(idx) {
+  var item = ADMIN_QUICK_REPLIES[idx];
+  if (!item) return;
+  var input = document.getElementById('tradeChatInput');
+  if (input) { input.value = item.text; input.focus(); }
+}
+
+async function sendTradeChat() {
+  if (!_tradeChatOrderId) return;
+  var input  = document.getElementById('tradeChatInput');
+  var btn    = document.getElementById('tradeChatSendBtn');
+  var message = input ? input.value.trim() : '';
+  if (!message) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    var res = await fetch('/api/admin/p2p/orders/' + encodeURIComponent(_tradeChatOrderId) + '/admin-reply', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: message })
+    });
+    var data = await res.json().catch(function(){ return {}; });
+    if (!res.ok) throw new Error(data.message || 'HTTP ' + res.status);
+    if (input) input.value = '';
+    // Refresh messages
+    var allMsgs = Array.isArray(data.order && data.order.messages) ? data.order.messages : [];
+    var box = document.getElementById('tradeChatMessages');
+    if (box && allMsgs.length) {
+      box.innerHTML = allMsgs.map(function(m){ return buildDisputeMsgBubble(m, _tradeChatBuyer, _tradeChatSeller); }).join('');
+      box.scrollTop = box.scrollHeight;
+    } else {
+      await loadTradeChatMessages();
+    }
+  } catch(e) {
+    alert('Failed to send: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Send ↑'; }
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 const ADMIN_QUICK_REPLIES = [
   { label: '📋 Investigating', text: 'We have received your appeal and are investigating. Please allow 24-48 hours.' },
   { label: '📸 Upload Proof', text: 'Please upload your payment proof (screenshot) to help us resolve this faster.' },
@@ -1317,8 +1417,9 @@ async function loadP2P() {
           ? `<button class="btn-primary btn-sm" data-p2p-action="release-order" data-order-id="${o.id}" style="font-size:11px;padding:3px 10px;">Release</button>`
           : '';
         const disputeBtn = s === 'DISPUTED'
-          ? `<button class="btn-danger btn-sm" data-p2p-action="view-dispute" data-order-id="${o.id}" style="font-size:11px;padding:3px 10px;">Dispute</button>`
+          ? `<button class="btn-danger btn-sm" data-p2p-action="view-dispute" data-order-id="${o.id}" style="font-size:11px;padding:3px 10px;">Dispute ⚠</button>`
           : '';
+        const chatBtn = `<button onclick="openTradeChatDrawer('${o.id}','${buyer}','${seller}')" style="background:rgba(0,184,212,0.12);border:1px solid rgba(0,184,212,0.3);color:#00b8d4;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;font-weight:600;">💬 Chat</button>`;
         return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
           <td style="padding:10px 20px;font-family:monospace;font-size:12px;color:rgba(255,255,255,0.5);">${shortId}</td>
           <td style="padding:10px 12px;">${buyer}</td>
@@ -1327,7 +1428,7 @@ async function loadP2P() {
           <td style="padding:10px 12px;color:rgba(255,255,255,0.5);">${asset}</td>
           <td style="padding:10px 12px;">${statusPill}</td>
           <td style="padding:10px 12px;color:rgba(255,255,255,0.4);font-size:12px;">${created}</td>
-          <td style="padding:10px 20px;">${releaseBtn}${disputeBtn}</td>
+          <td style="padding:10px 20px;display:flex;gap:4px;flex-wrap:wrap;">${chatBtn}${releaseBtn}${disputeBtn}</td>
         </tr>`;
       }).join('');
     }
@@ -3203,6 +3304,10 @@ function wireEventListeners() {
   document.getElementById('p2pDisputesList').addEventListener('click', handleP2PActions);
   document.getElementById('p2pReloadBtn').addEventListener('click', async () => loadP2P());
   document.getElementById('liveTradesReloadBtn').addEventListener('click', async () => loadP2P());
+  // Ctrl+Enter to send in trade chat drawer
+  document.getElementById('tradeChatInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendTradeChat(); }
+  });
 
   // User profile drawer - tab switching + close via event delegation
   document.getElementById('userProfileDrawer').addEventListener('click', (e) => {

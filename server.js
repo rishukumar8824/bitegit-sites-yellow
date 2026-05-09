@@ -3869,6 +3869,26 @@ app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, a
   }
 });
 
+// ── Admin: Get P2P Order Chat Messages ────────────────────────────────────────
+app.get('/api/admin/p2p/orders/:orderId/chat', requiresAdminSession, async (req, res) => {
+  try {
+    const orderId = String(req.params.orderId || '').trim();
+    const { p2pOrders } = getCollections();
+    const order = await p2pOrders.findOne({ id: orderId });
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    const messages = Array.isArray(order.messages) ? order.messages : [];
+    return res.json({
+      orderId,
+      status: order.status,
+      buyerUsername:  order.buyerUsername  || order.buyerUserId  || '',
+      sellerUsername: order.sellerUsername || order.sellerUserId || '',
+      messages
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+});
+
 // ── Admin: P2P Dispute — Admin Reply ──────────────────────────────────────────
 app.post('/api/admin/p2p/orders/:orderId/admin-reply', requiresAdminSession, async (req, res) => {
   try {
@@ -3881,7 +3901,7 @@ app.post('/api/admin/p2p/orders/:orderId/admin-reply', requiresAdminSession, asy
     const now = Date.now();
     const msg = {
       id: 'msg_' + now + '_admin',
-      sender: 'admin:' + (req.adminAuth?.adminEmail || process.env.ADMIN_EMAIL || 'admin'),
+      sender: 'Support',
       senderRole: 'admin',
       text: message,
       createdAt: now

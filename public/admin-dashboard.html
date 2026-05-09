@@ -187,6 +187,39 @@
       </div>
     </header>
 
+    <!-- ── Trade Chat Drawer ── -->
+    <div id="tradeChatDrawer" style="display:none;position:fixed;inset:0;z-index:9999;">
+      <!-- Backdrop -->
+      <div onclick="closeTradeChatDrawer()" style="position:absolute;inset:0;background:rgba(0,0,0,0.55);"></div>
+      <!-- Drawer panel -->
+      <div style="position:absolute;right:0;top:0;bottom:0;width:420px;max-width:100vw;background:#0f172a;border-left:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;">
+        <!-- Header -->
+        <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:#fff;">Order Chat</div>
+            <div id="tradeChatOrderMeta" style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;"></div>
+          </div>
+          <button onclick="closeTradeChatDrawer()" style="background:rgba(255,255,255,0.06);border:none;color:#94a3b8;width:32px;height:32px;border-radius:8px;font-size:18px;cursor:pointer;line-height:1;">×</button>
+        </div>
+        <!-- Messages -->
+        <div id="tradeChatMessages" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:6px;"></div>
+        <!-- Quick replies -->
+        <div style="padding:10px 16px 0;border-top:1px solid rgba(255,255,255,0.06);">
+          <div style="font-size:10px;color:#64748b;font-weight:700;letter-spacing:.5px;margin-bottom:6px;">QUICK REPLY</div>
+          <div style="display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;padding-bottom:8px;" id="tradeChatQuickReplies"></div>
+        </div>
+        <!-- Input -->
+        <div style="padding:10px 16px 16px;display:flex;gap:8px;align-items:flex-end;">
+          <textarea id="tradeChatInput" placeholder="Type a message… (name shows as Support)" rows="2"
+            style="flex:1;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 10px;color:#e2e8f0;font-size:13px;resize:none;outline:none;"></textarea>
+          <button id="tradeChatSendBtn" onclick="sendTradeChat()"
+            style="background:#0ecb81;color:#000;font-size:13px;font-weight:700;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;white-space:nowrap;">
+            Send ↑
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Page Body -->
     <div class="admin-body">
       <div id="globalMessage" class="hidden"></div>
