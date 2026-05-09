@@ -1019,7 +1019,7 @@ function buildDisputeMsgBubble(msg, buyerLabel, sellerLabel) {
     : '';
   let roleLabel, roleColor, bubble;
   if (rawSender.startsWith('admin') || rawSender === 'admin' || msg.sender === 'Support') {
-    roleLabel = 'BX Support'; roleColor = '#00b8d4'; bubble = 'rgba(0,229,255,0.10)';
+    roleLabel = 'Support'; roleColor = '#00b8d4'; bubble = 'rgba(0,229,255,0.10)';
   } else if (rawSender === 'buyer' || rawSender.includes('buyer')) {
     roleLabel = '🟦 Buyer (' + escapeHtml(buyerLabel) + ')'; roleColor = '#3b82f6'; bubble = 'rgba(59,130,246,0.10)';
   } else if (rawSender === 'seller' || rawSender.includes('seller')) {
