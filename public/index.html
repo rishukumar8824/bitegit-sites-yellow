@@ -510,56 +510,62 @@
 
       <section class="cf-app-block cf-mobile-promo-video cf-reveal" aria-label="Mobile app promo">
         <div class="promo2-wrap">
-          <!-- Phone mockup: exact 758:1632 ratio, nothing cut -->
-          <div class="promo2-phone">
-            <div class="promo2-notch"></div>
-            <video autoplay muted loop playsinline preload="metadata" style="width:100%;height:100%;object-fit:fill;display:block;">
-              <source src="/videos/bitget-1.webm" type="video/webm" />
-              <source src="/videos/mobile.mp4" type="video/mp4" />
-            </video>
-          </div>
-          <!-- Side card: 740:548 natural ratio, no phone frame -->
-          <div class="promo2-card">
-            <video autoplay muted loop playsinline preload="metadata" style="width:100%;height:100%;object-fit:fill;display:block;">
-              <source src="/videos/bitget-2.webm" type="video/webm" />
-            </video>
+          <div class="promo2-inner">
+            <!-- Phone mockup: exact 758:1632 ratio, nothing cut -->
+            <div class="promo2-phone">
+              <div class="promo2-notch"></div>
+              <video autoplay muted loop playsinline preload="metadata" style="width:100%;height:100%;object-fit:fill;display:block;">
+                <source src="/videos/bitget-1.webm" type="video/webm" />
+                <source src="/videos/mobile.mp4" type="video/mp4" />
+              </video>
+            </div>
+            <!-- Side card: overlaps phone from right, no phone frame -->
+            <div class="promo2-card">
+              <video autoplay muted loop playsinline preload="metadata" style="width:100%;height:100%;object-fit:fill;display:block;">
+                <source src="/videos/bitget-2.webm" type="video/webm" />
+              </video>
+            </div>
           </div>
         </div>
         <style>
           .promo2-wrap {
+            position: relative;
             display: flex;
-            align-items: center;
             justify-content: center;
-            gap: 14px;
+            align-items: center;
             padding: 36px 16px;
           }
-          .promo2-phone {
+          .promo2-inner {
             position: relative;
-            /* 758:1632 ratio — no border-radius so video corners aren't cut */
-            width: 200px;
+            width: 380px;
+            height: 431px;
+            flex-shrink: 0;
+          }
+          .promo2-phone {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 210px;
             height: 431px;
             background: transparent;
-            border-radius: 0;
-            border: none;
             box-shadow: 0 24px 60px rgba(0,0,0,0.7);
-            overflow: visible;
-            flex-shrink: 0;
           }
           .promo2-notch { display: none; }
           .promo2-card {
-            /* 740:548 ratio — no border-radius so corners aren't cut */
-            width: 250px;
-            height: 185px;
-            border-radius: 0;
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 220px;
+            height: 163px;
             overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.55);
-            flex-shrink: 0;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.6);
             background: #0d0d0d;
           }
           @media (max-width: 520px) {
-            .promo2-phone { width: 150px; height: 323px; }
-            .promo2-card  { width: 180px; height: 133px; }
-            .promo2-wrap  { gap: 10px; padding: 20px 8px; }
+            .promo2-inner { width: 280px; height: 323px; }
+            .promo2-phone { width: 158px; height: 323px; }
+            .promo2-card  { width: 165px; height: 122px; }
           }
         </style>
       </section>
