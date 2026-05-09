@@ -6,6 +6,18 @@ try { geoip = require('geoip-lite'); } catch(e) { /* optional */ }
 const { localFaceMatch } = require('./services/local-face-match');
 const express = require('express');
 const path = require('path');
+
+// Show username if set (not email); else mask email → ab***@gmail.com
+function safeDisplayName(username, email) {
+  const u = String(username || '').trim();
+  const e = String(email || '').trim();
+  if (u && !u.includes('@')) return u;
+  const src = e || u;
+  if (!src.includes('@')) return src || 'User';
+  const [local, domain] = src.split('@');
+  const masked = local.length <= 2 ? local + '***' : local.slice(0, 2) + '***';
+  return masked + '@' + domain;
+}
 const { connectToMongo, getCollections, getMongoClient, getMongoConfig, isDbConnected } = require('./lib/db');
 const { createRepositories } = require('./lib/repositories');
 const { createWalletService } = require('./lib/wallet-service');
@@ -3230,7 +3242,7 @@ app.get('/api/p2p/public', async (req, res) => {
     const allOffers = await repos.listOffers({ activeOnly: true, availableOnly: true, excludeDemo: true });
     const mapAd = (o) => ({
       id: o.id || o._id,
-      advertiser: o.advertiser,
+      advertiser: safeDisplayName(o.advertiser, o.createdByEmail),
       price: o.price,
       availableUsdt: Number(o.available || o.availableAmount || 0),
       totalUsdt: Number(o.totalAmount || o.available || 0),
@@ -3352,6 +3364,7 @@ app.get('/api/p2p/offers', async (req, res) => {
 
       return {
         ...offer,
+        advertiser: safeDisplayName(offer.advertiser, offer.createdByEmail),
         merchantBadge,
         merchantBadges,
         baseOrders,

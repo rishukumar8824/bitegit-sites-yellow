@@ -1,6 +1,18 @@
 const { buildP2POrderDocument, toOrderResponse } = require('../models/P2POrder');
 const { makeSeedUserId } = require('../lib/wallet-service');
 
+// Show username if set; otherwise mask email (ab***@gmail.com)
+function safeDisplayName(username, email) {
+  const u = String(username || '').trim();
+  const e = String(email || '').trim();
+  if (u && !u.includes('@')) return u;
+  const src = e || u;
+  if (!src.includes('@')) return src || 'User';
+  const [local, domain] = src.split('@');
+  const masked = local.length <= 2 ? local + '***' : local.slice(0, 2) + '***';
+  return masked + '@' + domain;
+}
+
 function createOrderReference() {
   const randomPart = Math.floor(1000 + Math.random() * 9000);
   return `P2P-${Date.now().toString().slice(-6)}-${randomPart}`;
@@ -227,8 +239,8 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
         type: adType,
         buyerId: buyer.id,
         sellerId: seller.id,
-        buyerUsername: buyer.username || buyer.id,
-        sellerUsername: seller.username || seller.id,
+        buyerUsername: safeDisplayName(buyer.username, buyer.email),
+        sellerUsername: safeDisplayName(seller.username, seller.email),
         buyerEmail: buyer.email || '',
         sellerEmail: seller.email || '',
         side: adType === 'SELL' ? 'buy' : 'sell',
@@ -240,16 +252,16 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
         expiresAt: now + effectiveTtlMs,
         participants: buildOrderParticipants({
           buyerId: buyer.id,
-          buyerUsername: buyer.username || buyer.id,
+          buyerUsername: safeDisplayName(buyer.username, buyer.email),
           buyerEmail: buyer.email || '',
           sellerId: seller.id,
-          sellerUsername: seller.username || seller.id,
+          sellerUsername: safeDisplayName(seller.username, seller.email),
           sellerEmail: seller.email || ''
         }),
         messages: buildOrderCreatedMessages({
           now,
-          buyerUsername: buyer.username || buyer.id,
-          sellerUsername: seller.username || seller.id,
+          buyerUsername: safeDisplayName(buyer.username, buyer.email),
+          sellerUsername: safeDisplayName(seller.username, seller.email),
           payWindowMinutes,
           sellerTerms: offer.remark || '',
           sellerQrCode
