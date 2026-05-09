@@ -125,15 +125,15 @@
 
         <!-- Balance header -->
         <style>
-          .hb-wrap{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 16px 0;background:#000;width:100%;box-sizing:border-box;}
+          .hb-wrap{display:flex;align-items:center;justify-content:space-between;padding:16px 16px 12px;background:#000;width:100%;box-sizing:border-box;gap:12px;}
           .hb-left{flex:1;min-width:0;}
-          .hb-label{font-size:12px;color:#888;display:flex;align-items:center;gap:5px;margin-bottom:5px;}
+          .hb-label{font-size:12px;color:#888;display:flex;align-items:center;gap:5px;margin-bottom:6px;}
           .hb-eye{background:none;border:none;color:#888;cursor:pointer;padding:0;display:flex;align-items:center;flex-shrink:0;}
-          .hb-amount-row{display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap;}
-          .hb-amount{font-size:26px;font-weight:800;color:#fff;letter-spacing:-0.5px;line-height:1.1;}
-          .hb-unit{display:inline-flex;align-items:center;gap:3px;background:#1a1a1a;border:none;border-radius:20px;padding:4px 10px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;}
-          .hb-sub{font-size:12px;color:#666;margin-bottom:0;}
-          .hb-add-btn{background:#fff;color:#000;font-size:13px;font-weight:700;padding:10px 18px;border-radius:12px;text-decoration:none;white-space:nowrap;flex-shrink:0;margin-left:12px;margin-top:2px;display:inline-block;}
+          .hb-amount-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:nowrap;}
+          .hb-amount{font-size:30px;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1;}
+          .hb-unit{display:inline-flex;align-items:center;gap:3px;background:#1a1a1a;border:none;border-radius:20px;padding:5px 11px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;}
+          .hb-sub{font-size:12px;color:#666;}
+          .hb-add-btn{background:#fff;color:#000;font-size:14px;font-weight:700;padding:14px 22px;border-radius:14px;text-decoration:none;white-space:nowrap;flex-shrink:0;display:inline-block;}
           .hb-picker{position:absolute;left:16px;right:16px;background:#111;border:1px solid #2a2a2a;border-radius:14px;z-index:200;padding:12px 16px;box-shadow:0 10px 30px rgba(0,0,0,0.8);}
           .hb-picker-title{font-size:11px;color:#666;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
           .hb-picker-list{display:flex;flex-wrap:wrap;gap:8px;}
