@@ -1703,10 +1703,8 @@
     var amt = parseFloat(document.getElementById('wdAmtInput').value);
     var net = WD_NETWORKS[currentWdNetwork];
     if(!addr) { showToast('Please enter withdrawal address'); return; }
-    if(!amt || amt < net.min) { showToast('Minimum withdrawal is ' + net.min + ' USDT'); return; }
-    // Store for confirm modal
+    if(!amt || isNaN(amt) || amt < net.min) { showToast('Minimum withdrawal is ' + net.min + ' USDT'); return; }
     _pendingWithdraw = { addr:addr, amt:amt, net:net, netKey:currentWdNetwork };
-    // Populate confirm modal
     document.getElementById('wdcNetwork').textContent = net.name;
     document.getElementById('wdcAmount').textContent = amt + ' USDT';
     document.getElementById('wdcFee').textContent = net.fee + ' USDT';
@@ -1723,62 +1721,24 @@
   function doWithdraw() {
     if(!_pendingWithdraw) return;
     var p = _pendingWithdraw;
-    var addr = p.addr;
     document.getElementById('modalWdConfirm').classList.add('hidden');
-    showToast('Processing...');
-    // Step 1: create withdrawal record
-    bcvFetch('/withdraw-request', {
-      method:'POST',
-      body: JSON.stringify({ method_code: WD_METHOD_MAP[p.netKey] || p.netKey, amount: p.amt, currency: 'USDT', wallet_type: 'spot' })
+
+    fetch('/api/withdrawals', {
+      method:'POST', credentials:'include',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ address:p.addr, amount:p.amt, network:p.netKey, currency:'USDT' })
     })
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-      console.log('[WD Step1]', JSON.stringify(d));
-      if(d.status !== 'success') {
-        var msg = (d.message && d.message.error) ? d.message.error[0] : (d.message || 'Withdrawal failed');
-        showToast(String(msg));
+    .then(function(r){ return r.json().then(function(d){ return { ok:r.ok, d:d }; }); })
+    .then(function(res){
+      if(!res.ok) {
+        showToast((res.d && res.d.message) || 'Withdrawal failed');
         return;
       }
-      var trxCode = d.data.trx;
-      // Build confirm body dynamically from returned form fields
-      var confirmBody = { trx: trxCode };
-      var rawForm = d.data.form;
-      // form can be object {label: {...}} or array [{label,type,...}]
-      var fields = [];
-      if(Array.isArray(rawForm)) {
-        fields = rawForm;
-      } else if(rawForm && typeof rawForm === 'object') {
-        fields = Object.values(rawForm);
-      }
-      if(fields.length > 0) {
-        fields.forEach(function(fld){
-          var lbl = fld.label || fld.name || '';
-          confirmBody[lbl] = addr;
-        });
-      }
-      // Always send common fallback field names
-      confirmBody['wallet_address'] = addr;
-      confirmBody['address'] = addr;
-      console.log('[WD Step2 body]', JSON.stringify(confirmBody));
-      // Step 2: confirm — deducts balance + notifies admin
-      return bcvFetch('/withdraw-request/confirm', {
-        method:'POST',
-        body: JSON.stringify(confirmBody)
-      })
-      .then(function(r){ return r.json(); })
-      .then(function(d2){
-        console.log('[WD Step2]', JSON.stringify(d2));
-        if(d2.status === 'success') {
-          showToast('Withdrawal request sent successfully!');
-          setTimeout(function(){ loadWithdrawHistory(); }, 1000);
-          loadWalletBalances && loadWalletBalances();
-          showScreen('screenOverview');
-        } else {
-          var errs = d2.message && d2.message.error;
-          var msg2 = Array.isArray(errs) ? errs.join(', ') : (errs || d2.message || 'Confirmation failed');
-          showToast(String(msg2));
-        }
-      });
+      showToast((res.d && res.d.message) || 'Withdrawal request sent successfully!');
+      setTimeout(function(){ loadWithdrawHistory(); }, 1000);
+      loadWdBalance();
+      loadWalletBalances && loadWalletBalances();
+      showScreen('screenOverview');
     })
     .catch(function(e){ console.error('[WD error]', e); showToast('Network error. Please try again.'); });
     _pendingWithdraw = null;
