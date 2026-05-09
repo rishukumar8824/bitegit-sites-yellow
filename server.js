@@ -3534,7 +3534,18 @@ app.post('/api/p2p/orders/:orderId/cancel', requiresP2PUser, async (req, res) =>
 async function createP2PAdController(req, res) {
   try {
     const userId = String(req.p2pUser.id || '').trim();
-    const username = String(req.p2pUser.username || '').trim();
+    // Always fetch fresh username from DB — session may be stale
+    let username = String(req.p2pUser.username || '').trim();
+    try {
+      const cols = getCollections();
+      const freshCred = await cols.p2pCredentials.findOne(
+        { $or: [{ userId }, { email: req.p2pUser.email }] },
+        { projection: { username: 1 } }
+      );
+      if (freshCred && freshCred.username && !freshCred.username.includes('@')) {
+        username = freshCred.username;
+      }
+    } catch (_) {}
     const merchantAccess = await getMerchantAccessState({
       userId: req.p2pUser.id,
       username: req.p2pUser.username,
@@ -3589,13 +3600,13 @@ async function createP2PAdController(req, res) {
     }
 
     const savedOffer = await walletService.createEscrowAd({
-      actor: req.p2pUser,
+      actor: { ...req.p2pUser, username }, // use fresh username from DB
       offerId: await createOfferId(),
       payload: req.body || {}
     });
 
     // Mark seller as online immediately so buyers see Online status right away
-    try { await repos.updateLastActive(userId, req.p2pUser.username); } catch (_) {}
+    try { await repos.updateLastActive(userId, username); } catch (_) {}
 
     // If this merchant already has an approved badge, stamp it on the new offer immediately
     try {
