@@ -52,7 +52,13 @@ function isValidEmail(email) {
 }
 
 function isValidPassword(password) {
-  return String(password || '').trim().length >= 6;
+  const pwd = String(password || '');
+  // Minimum 8 characters, at least one letter and one number
+  return pwd.length >= 8 && /[a-zA-Z]/.test(pwd) && /[0-9]/.test(pwd);
+}
+
+function passwordStrengthMessage() {
+  return 'Password must be at least 8 characters and include at least one letter and one number.';
 }
 
 function createOtpCode() {
@@ -252,7 +258,8 @@ function registerAuthRoutes(app, deps) {
     try {
       const existing = await repos.getP2PCredential(email);
       if (existing) {
-        return res.status(409).json({ message: 'Account already exists. Please login.' });
+        // Return same generic message to prevent email enumeration
+        return res.status(200).json({ message: 'If this email is not already registered, a verification code has been sent.' });
       }
 
       const result = await sendOtpEmail(email, SIGNUP_OTP_PURPOSE);
@@ -350,7 +357,7 @@ function registerAuthRoutes(app, deps) {
         ipAddress,
         metadata: { reason: 'invalid_password_length', email }
       });
-      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+      return res.status(400).json({ message: 'Password must be at least 8 characters and include at least one letter and one number.' });
     }
 
     try {
@@ -455,7 +462,7 @@ function registerAuthRoutes(app, deps) {
         ipAddress,
         metadata: { reason: 'invalid_password_length', email }
       });
-      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+      return res.status(400).json({ message: 'Password must be at least 8 characters and include at least one letter and one number.' });
     }
     if (!isValidOtpCode(otpCode)) {
       await safeAuditLog({
@@ -584,7 +591,7 @@ function registerAuthRoutes(app, deps) {
       return res.status(400).json({ message: 'Enter a valid 6-digit verification code.' });
     }
     if (!isValidPassword(nextPassword)) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+      return res.status(400).json({ message: 'Password must be at least 8 characters and include at least one letter and one number.' });
     }
 
     try {
