@@ -8305,7 +8305,7 @@ window.deleteMobAd = async function(offerId) {
     '<div id="bfBuyScreen" style="display:none;' + SCR + '">',
       '<div style="display:flex;align-items:center;padding:1rem 1rem 0.6rem;flex-shrink:0;">',
         '<button id="bfBuyBack" style="' + BACK + '">←</button>',
-        '<h2 style="flex:1;text-align:center;margin:0;font-size:1rem;font-weight:700;color:#fff;">Buy USDT</h2>',
+        '<h2 id="bfBuyScreenTitle" style="flex:1;text-align:center;margin:0;font-size:1rem;font-weight:700;color:#fff;">Buy USDT</h2>',
         '<div style="width:1.8rem;"></div>',
       '</div>',
       '<div style="' + BODY + 'padding-top:0.2rem;">',
@@ -8679,7 +8679,12 @@ window.deleteMobAd = async function(offerId) {
   function bfFillBuy(offer) {
     _bfOffer = offer;
     _bfCryptoMode = false;
+    // offer.side = taker's side: 'buy' means taker BUYS (SELL ad), 'sell' means taker SELLS (BUY ad)
+    var takerAction = (offer.side === 'sell') ? 'Sell' : 'Buy';
     var el;
+    // Update title and button dynamically
+    el = document.getElementById('bfBuyScreenTitle'); if (el) el.textContent = takerAction + ' USDT';
+    el = document.getElementById('bfBuyBtn'); if (el) el.textContent = takerAction + ' USDT with 0 fees';
     el = document.getElementById('bfSellerRow'); if (el) el.innerHTML = sellerRowHtml(offer.advertiser || '--');
     el = document.getElementById('bfPriceTag'); if (el) el.innerHTML = 'Price ₹' + fmt(offer.price) + ' <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
     el = document.getElementById('bfTerms'); if (el) el.textContent = offer.remark || 'Standard P2P terms apply.';
@@ -8870,7 +8875,8 @@ window.deleteMobAd = async function(offerId) {
         if (hint) hint.textContent = e.message || 'Failed to create order.';
       } finally {
         btn._creating = false; btn.disabled = false;
-        btn.textContent = 'Buy USDT with 0 fees';
+        var _ta = (_bfOffer && _bfOffer.side === 'sell') ? 'Sell' : 'Buy';
+        btn.textContent = _ta + ' USDT with 0 fees';
       }
     };
 
