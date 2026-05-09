@@ -2420,23 +2420,42 @@ app.get('/api/wallet/summary', requiresP2PUser, async (req, res) => {
             USDT: Number(wallet.availableBalance || wallet.balance || 0)
           };
 
+    // Sum pending withdrawal amounts so we don't show them as "Funding"
+    let pendingWithdrawalSum = 0;
+    try {
+      const { withdrawalRequests } = getCollections();
+      const pendingWds = await withdrawalRequests.find(
+        { userId: String(req.p2pUser.id), status: 'pending' },
+        { projection: { amount: 1 } }
+      ).toArray();
+      pendingWithdrawalSum = pendingWds.reduce((sum, w) => sum + Number(w.amount || 0), 0);
+    } catch (_) { /* non-critical */ }
+
+    const lockedTotal  = Number(wallet.lockedBalance || wallet.p2pLocked || 0);
+    // funding = only true P2P escrow, NOT pending withdrawals
+    const fundingOnly  = Math.max(0, lockedTotal - pendingWithdrawalSum);
+    const availBal     = Number(wallet.availableBalance || wallet.balance || 0);
+    // total shown to user = available + p2p-escrow only (pending withdrawals are "gone")
+    const totalForUser = availBal + fundingOnly;
+
     return res.json({
       summary: {
-        total_balance: Number(wallet.totalBalance || 0),
-        available_balance: Number(wallet.availableBalance || wallet.balance || 0),
-        locked_balance: Number(wallet.lockedBalance || wallet.p2pLocked || 0),
-        spot_balance: Number(wallet.availableBalance || wallet.balance || 0),
-        funding_balance: Number(wallet.lockedBalance || wallet.p2pLocked || 0),
-        asset_balances: assetBalances,
-        deposit_address: depositConfig.depositAddress,
-        deposit_network: depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
-        deposit_networks: depositConfig.networks
+        total_balance:     totalForUser,
+        available_balance: availBal,
+        locked_balance:    fundingOnly,
+        spot_balance:      availBal,
+        funding_balance:   fundingOnly,
+        pending_withdrawals: pendingWithdrawalSum,
+        asset_balances:    assetBalances,
+        deposit_address:   depositConfig.depositAddress,
+        deposit_network:   depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
+        deposit_networks:  depositConfig.networks
       },
       wallet: {
         ...wallet,
-        depositAddress: depositConfig.depositAddress,
-        depositNetwork: depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
-        depositNetworks: depositConfig.networks,
+        depositAddress:   depositConfig.depositAddress,
+        depositNetwork:   depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
+        depositNetworks:  depositConfig.networks,
         assetBalances
       },
       depositConfig,
