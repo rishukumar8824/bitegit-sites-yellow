@@ -535,40 +535,30 @@
           }
           .promo2-phone {
             position: relative;
-            /* 758:1632 ≈ 1:2.15 — exact phone video ratio, zero crop */
-            width: 168px;
-            height: 362px;
-            background: #000;
-            border-radius: 30px;
-            border: 2.5px solid #2c2c3e;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.05);
-            overflow: hidden;
+            /* 758:1632 ratio — no border-radius so video corners aren't cut */
+            width: 200px;
+            height: 431px;
+            background: transparent;
+            border-radius: 0;
+            border: none;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+            overflow: visible;
             flex-shrink: 0;
           }
-          .promo2-notch {
-            position: absolute;
-            top: 8px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 48px;
-            height: 8px;
-            background: #000;
-            border-radius: 8px;
-            z-index: 10;
-          }
+          .promo2-notch { display: none; }
           .promo2-card {
-            /* 740:548 ≈ 1.35:1 — exact side video ratio, zero crop */
-            width: 210px;
-            height: 156px;
-            border-radius: 14px;
+            /* 740:548 ratio — no border-radius so corners aren't cut */
+            width: 250px;
+            height: 185px;
+            border-radius: 0;
             overflow: hidden;
             box-shadow: 0 10px 30px rgba(0,0,0,0.55);
             flex-shrink: 0;
             background: #0d0d0d;
           }
           @media (max-width: 520px) {
-            .promo2-phone { width: 130px; height: 280px; border-radius: 24px; }
-            .promo2-card  { width: 155px; height: 115px; border-radius: 10px; }
+            .promo2-phone { width: 150px; height: 323px; }
+            .promo2-card  { width: 180px; height: 133px; }
             .promo2-wrap  { gap: 10px; padding: 20px 8px; }
           }
         </style>
