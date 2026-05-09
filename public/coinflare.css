@@ -582,18 +582,18 @@ body.coinflare-page.cf-chart-open .cf-signup-link {
   padding: 0;
 }
 .cf-action-icon {
-  width: 48px;
-  height: 48px;
+  width: 42px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .cf-action-icon svg {
-  width: 48px;
-  height: 48px;
+  width: 42px;
+  height: 42px;
 }
 .cf-action-label {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 400;
   color: rgba(255,255,255,0.88);
   text-align: center;
