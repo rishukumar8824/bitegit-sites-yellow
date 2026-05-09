@@ -387,6 +387,7 @@
           <div class="badge"><span class="badge-check">✓</span> KYC Verified</div>
           <div class="badge"><span class="badge-check">✓</span> Email</div>
           <div class="badge" id="phoneBadge" style="display:none;"><span class="badge-check">✓</span> Phone</div>
+          <div class="badge" id="merchantBadge" style="display:none;background:rgba(255,184,0,0.12);border-color:rgba(255,184,0,0.35);color:#ffb800;"><span style="color:#ffb800;font-size:13px;">🏪</span> Merchant</div>
         </div>
         <button class="edit-profile-btn">Edit Profile</button>
       </div>
@@ -644,9 +645,18 @@
 
     // Merchant
     if (d.isMerchant) {
+      // Show merchant badge in profile card
+      const mb = document.getElementById('merchantBadge');
+      if (mb) mb.style.display = 'flex';
+
+      // Update merchant section card
       document.getElementById('merchantTitle').textContent = 'Verified Merchant';
       document.getElementById('merchantDesc').textContent = 'You are an approved P2P merchant';
       document.getElementById('merchantAction').innerHTML = '<span class="merchant-badge">MERCHANT ✓</span>';
+
+      // Make merchant card clickable (not greyed out)
+      const mc = document.getElementById('merchantCard');
+      if (mc) { mc.style.opacity = '1'; mc.style.cursor = 'pointer'; }
     }
 
     // Payment method count

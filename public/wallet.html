@@ -2091,8 +2091,8 @@
       .then(function(data) {
         if (!data || data.status !== 'success') return;
         spotBalance    = Number(data.data.estimated_balance || 0);   // available
-        fundingBalance = Number(data.data.funding_balance   || 0);   // locked
-        totalBalance   = Number(data.data.total_balance     || spotBalance + fundingBalance);
+        fundingBalance = 0;   // locked funds not shown to user — only available balance matters
+        totalBalance   = spotBalance;  // total = available only, no locked
         ovTotalUsdt    = totalBalance;
 
         // Overview tab shows total by default
