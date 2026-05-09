@@ -131,17 +131,17 @@
           .hb-label{font-size:12px;color:#888;display:flex;align-items:center;gap:6px;margin-bottom:6px;}
           .hb-eye{background:none;border:none;cursor:pointer;padding:0;display:flex;align-items:center;flex-shrink:0;}
           .hb-amount-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:nowrap;}
-          .hb-amount{font-size:30px;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1;}
+          .hb-amount{font-size:30px;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1;min-width:60px;display:inline-block;}
           .hb-unit{display:inline-flex;align-items:center;gap:3px;background:#1a1a1a;border:none;border-radius:20px;padding:5px 11px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;}
           .hb-sub{font-size:12px;color:#666;}
           .hb-add-btn{background:#fff;color:#000;font-size:13px;font-weight:700;padding:10px 16px;border-radius:10px;text-decoration:none;white-space:nowrap;flex-shrink:0;display:inline-block;}
-          /* Dropdown — exact screenshot style */
-          .hb-picker{position:absolute;left:12px;right:12px;background:#1c1c1e;border-radius:16px;z-index:300;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.9);}
-          .hb-picker-opt{background:none;border:none;border-bottom:1px solid rgba(255,255,255,0.07);color:#fff;font-size:20px;font-weight:400;padding:16px 22px;cursor:pointer;font-family:inherit;text-align:left;width:100%;display:block;letter-spacing:0;}
+          /* Dropdown — exact 2nd screenshot style: narrow, black, white small text */
+          .hb-picker{position:absolute;left:60px;width:180px;background:#1a1a1a;border-radius:14px;z-index:300;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.95);border:1px solid #2a2a2a;}
+          .hb-picker-opt{background:none;border:none;border-bottom:1px solid rgba(255,255,255,0.06);color:#fff;font-size:16px;font-weight:400;padding:14px 18px;cursor:pointer;font-family:inherit;text-align:left;width:100%;display:block;}
           .hb-picker-opt:last-child{border-bottom:none;}
-          .hb-picker-opt:active,.hb-picker-opt:hover{background:rgba(255,255,255,0.05);}
-          .hb-picker-opt.active{color:#fff;font-weight:600;}
-          .hb-picker-more{color:#aaa;font-size:20px;}
+          .hb-picker-opt:active{background:rgba(255,255,255,0.04);}
+          .hb-picker-opt.active{color:#fff;}
+          .hb-picker-more{color:#888;}
         </style>
         <div class="hb-wrap">
           <div class="hb-left">
@@ -651,16 +651,16 @@
           }
           .promo2-inner {
             position: relative;
-            width: 380px;
-            height: 431px;
+            width: 440px;
+            height: 510px;
             flex-shrink: 0;
           }
           .promo2-phone {
             position: absolute;
             left: 0;
             top: 0;
-            width: 210px;
-            height: 431px;
+            width: 248px;
+            height: 510px;
             background: transparent;
             box-shadow: 0 24px 60px rgba(0,0,0,0.7);
           }
@@ -670,16 +670,16 @@
             right: 0;
             top: 50%;
             transform: translateY(-50%);
-            width: 220px;
-            height: 163px;
+            width: 258px;
+            height: 191px;
             overflow: hidden;
             box-shadow: 0 12px 36px rgba(0,0,0,0.6);
             background: #0d0d0d;
           }
           @media (max-width: 520px) {
-            .promo2-inner { width: 280px; height: 323px; }
-            .promo2-phone { width: 158px; height: 323px; }
-            .promo2-card  { width: 165px; height: 122px; }
+            .promo2-inner { width: 320px; height: 370px; }
+            .promo2-phone { width: 180px; height: 370px; }
+            .promo2-card  { width: 188px; height: 139px; }
           }
         </style>
       </section>
