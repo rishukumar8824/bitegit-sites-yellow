@@ -2423,13 +2423,13 @@ app.get('/api/wallet/summary', requiresP2PUser, async (req, res) => {
     // Sum pending withdrawal amounts so we don't show them as "Funding"
     let pendingWithdrawalSum = 0;
     try {
-      const { withdrawalRequests } = getCollections();
-      const pendingWds = await withdrawalRequests.find(
-        { userId: String(req.p2pUser.id), status: 'pending' },
-        { projection: { amount: 1 } }
-      ).toArray();
+      const allWds = await walletService.listWithdrawalRequests(req.p2pUser.id, { limit: 100 });
+      const pendingWds = allWds.filter(w => String(w.status || '').toLowerCase() === 'pending');
       pendingWithdrawalSum = pendingWds.reduce((sum, w) => sum + Number(w.amount || 0), 0);
-    } catch (_) { /* non-critical */ }
+      console.log(`[wallet/summary] userId=${req.p2pUser.id} lockedBalance=${wallet.lockedBalance} pendingWithdrawals=${pendingWithdrawalSum} count=${pendingWds.length}`);
+    } catch (err) {
+      console.error('[wallet/summary] pendingWithdrawalSum query failed:', err.message);
+    }
 
     const lockedTotal  = Number(wallet.lockedBalance || wallet.p2pLocked || 0);
     // funding = only true P2P escrow, NOT pending withdrawals
