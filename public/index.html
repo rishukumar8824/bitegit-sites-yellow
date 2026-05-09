@@ -137,16 +137,22 @@
           .hb-add-btn{background:#fff;color:#000;font-size:13px;font-weight:700;padding:10px 16px;border-radius:10px;text-decoration:none;white-space:nowrap;flex-shrink:0;display:inline-block;}
           .hb-picker{position:absolute;left:16px;right:16px;background:#111;border:1px solid #2a2a2a;border-radius:14px;z-index:200;padding:12px 16px;box-shadow:0 10px 30px rgba(0,0,0,0.8);}
           .hb-picker-title{font-size:11px;color:#666;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
-          .hb-picker-list{display:flex;flex-wrap:wrap;gap:8px;}
-          .hb-picker-opt{background:#1c1c1c;border:1px solid #2a2a2a;border-radius:20px;color:#ccc;font-size:12px;font-weight:600;padding:6px 16px;cursor:pointer;font-family:inherit;}
-          .hb-picker-opt.active{background:#fff;color:#000;border-color:#fff;}
+          .hb-picker-list{display:flex;flex-direction:column;gap:4px;}
+          .hb-picker-opt{background:#1a1a1a;border:1px solid #222;border-radius:12px;color:#ccc;font-size:13px;font-weight:500;padding:10px 14px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:10px;text-align:left;width:100%;}
+          .hb-picker-opt.active{background:#222;border-color:#444;color:#fff;}
+          .hb-picker-opt:hover{background:#222;}
+          .hb-po-name{flex:1;font-weight:600;color:#fff;}
+          .hb-po-bal{font-size:12px;color:#888;}
         </style>
         <div class="hb-wrap">
           <div class="hb-left">
             <div class="hb-label">
               Total asset value
               <button class="hb-eye" id="hbEyeBtn" onclick="hbToggleVis()">
-                <svg id="hbEyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
+                <svg id="hbEyeIcon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" fill="#1a1a1a" stroke="#555"/>
+                  <circle cx="12" cy="12" r="3" fill="#555" stroke="none"/>
+                </svg>
               </button>
             </div>
             <div class="hb-amount-row">
@@ -161,13 +167,28 @@
           <a href="/p2p#deposit" class="hb-add-btn">Add funds</a>
         </div>
         <div class="hb-picker" id="hbPicker" style="display:none;">
-          <div class="hb-picker-title">Display currency</div>
+          <div class="hb-picker-title">Select currency</div>
           <div class="hb-picker-list">
-            <button class="hb-picker-opt active" onclick="hbSelectUnit('USDT',this)">USDT</button>
-            <button class="hb-picker-opt" onclick="hbSelectUnit('BTC',this)">BTC</button>
-            <button class="hb-picker-opt" onclick="hbSelectUnit('ETH',this)">ETH</button>
-            <button class="hb-picker-opt" onclick="hbSelectUnit('BNB',this)">BNB</button>
-            <button class="hb-picker-opt" onclick="hbSelectUnit('USD',this)">USD</button>
+            <button class="hb-picker-opt active" onclick="hbSelectUnit('USDT',this)">
+              <img src="https://assets.coincap.io/assets/icons/usdt@2x.png" onerror="this.style.display='none'" width="20" height="20" style="border-radius:50%"/>
+              <span class="hb-po-name">USDT</span><span class="hb-po-bal" id="hbbal_USDT">0.00</span>
+            </button>
+            <button class="hb-picker-opt" onclick="hbSelectUnit('BTC',this)">
+              <img src="https://assets.coincap.io/assets/icons/btc@2x.png" onerror="this.style.display='none'" width="20" height="20" style="border-radius:50%"/>
+              <span class="hb-po-name">BTC</span><span class="hb-po-bal" id="hbbal_BTC">0.00</span>
+            </button>
+            <button class="hb-picker-opt" onclick="hbSelectUnit('ETH',this)">
+              <img src="https://assets.coincap.io/assets/icons/eth@2x.png" onerror="this.style.display='none'" width="20" height="20" style="border-radius:50%"/>
+              <span class="hb-po-name">ETH</span><span class="hb-po-bal" id="hbbal_ETH">0.00</span>
+            </button>
+            <button class="hb-picker-opt" onclick="hbSelectUnit('BNB',this)">
+              <img src="https://assets.coincap.io/assets/icons/bnb@2x.png" onerror="this.style.display='none'" width="20" height="20" style="border-radius:50%"/>
+              <span class="hb-po-name">BNB</span><span class="hb-po-bal" id="hbbal_BNB">0.00</span>
+            </button>
+            <button class="hb-picker-opt" onclick="hbSelectUnit('USD',this)">
+              <span style="width:20px;height:20px;border-radius:50%;background:#1a7f37;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0;">$</span>
+              <span class="hb-po-name">USD</span><span class="hb-po-bal" id="hbbal_USD">0.00</span>
+            </button>
           </div>
         </div>
         <script>
@@ -177,7 +198,7 @@
           hbVisible=!hbVisible;
           var ic=document.getElementById('hbEyeIcon');
           if(!hbVisible){
-            ic.innerHTML='<circle cx="12" cy="12" r="10"/><line x1="4" y1="4" x2="20" y2="20" stroke-width="2"/>';
+            ic.innerHTML='<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" fill="#1a1a1a" stroke="#555" stroke-width="1.8"/><line x1="1" y1="1" x2="23" y2="23" stroke="#555" stroke-width="1.8"/>';
             document.getElementById('hbAmount').textContent='••••••';
             document.getElementById('hbSub').textContent='≈ •••• USD';
           } else {
@@ -201,6 +222,12 @@
           else{var r=hbRates[hbUnit]||1;amt=(hbBal*r).toFixed(hbUnit==='BTC'?8:hbUnit==='ETH'?6:4);sub='≈ '+hbBal.toFixed(2)+' USD';}
           document.getElementById('hbAmount').textContent=amt;
           document.getElementById('hbSub').textContent=sub;
+          // Update picker balances
+          var b=document.getElementById('hbbal_USDT'); if(b)b.textContent=hbBal.toFixed(2)+' USDT';
+          var b2=document.getElementById('hbbal_BTC'); if(b2)b2.textContent=(hbBal*0.000015).toFixed(8)+' BTC';
+          var b3=document.getElementById('hbbal_ETH'); if(b3)b3.textContent=(hbBal*0.00028).toFixed(6)+' ETH';
+          var b4=document.getElementById('hbbal_BNB'); if(b4)b4.textContent=(hbBal*0.014).toFixed(4)+' BNB';
+          var b5=document.getElementById('hbbal_USD'); if(b5)b5.textContent=hbBal.toFixed(2)+' USD';
         }
         async function hbLoad(){
           try{
