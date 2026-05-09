@@ -347,6 +347,8 @@ async function loadCurrentView(options = {}) {
   }
 }
 
+var _liveTradesInterval = null;
+
 async function changeView(view) {
   if (!viewLoaders[view]) {
     return;
@@ -358,12 +360,23 @@ async function changeView(view) {
       state.support.pollInterval = null;
     }
   }
+  // Stop live trades auto-refresh when leaving P2P view
+  if (state.currentView === 'p2p' && view !== 'p2p') {
+    if (_liveTradesInterval) { clearInterval(_liveTradesInterval); _liveTradesInterval = null; }
+  }
   state.currentView = view;
   try { localStorage.setItem('admin_last_view', view); } catch(_) {}
   setActiveNav(view);
   showPanel(view);
   setSidebarOpen(false);
   await loadCurrentView();
+  // Start auto-refresh for live trades when entering P2P view
+  if (view === 'p2p') {
+    if (_liveTradesInterval) clearInterval(_liveTradesInterval);
+    _liveTradesInterval = setInterval(function() {
+      if (state.currentView === 'p2p') loadP2P().catch(function(){});
+    }, 15000);
+  }
 }
 
 function renderCards(containerId, cards) {
@@ -1246,11 +1259,80 @@ async function adminFreezeEscrow(orderId, btn) {
 }
 
 async function loadP2P() {
-  const [adsPayload, disputesPayload, settingsPayload] = await Promise.all([
+  const [adsPayload, disputesPayload, settingsPayload, liveTradesPayload] = await Promise.all([
     apiRequest('/p2p/ads?limit=30'),
     apiRequest('/p2p/disputes?limit=20'),
-    apiRequest('/p2p/settings')
+    apiRequest('/p2p/settings'),
+    apiRequest('/p2p/live-trades?limit=100').catch(() => ({ total: 0, statusCounts: {}, orders: [] }))
   ]);
+
+  // ── Live Trades ──────────────────────────────────────────────────────────────
+  const liveOrders = Array.isArray(liveTradesPayload.orders) ? liveTradesPayload.orders : [];
+  const statusCounts = liveTradesPayload.statusCounts || {};
+
+  // Total badge
+  const totalBadge = document.getElementById('liveTradesTotalBadge');
+  if (totalBadge) totalBadge.textContent = liveOrders.length + ' Active';
+
+  // Status pills
+  const statsEl = document.getElementById('liveTradesStats');
+  const STATUS_COLORS = {
+    CREATED:      { bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: 'rgba(59,130,246,0.3)' },
+    PENDING:      { bg: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: 'rgba(245,158,11,0.3)' },
+    PAYMENT_SENT: { bg: 'rgba(168,85,247,0.15)', color: '#c084fc', border: 'rgba(168,85,247,0.3)' },
+    PAID:         { bg: 'rgba(14,203,129,0.15)', color: '#0ecb81', border: 'rgba(14,203,129,0.3)' },
+    DISPUTED:     { bg: 'rgba(239,68,68,0.15)',  color: '#f87171', border: 'rgba(239,68,68,0.3)'  }
+  };
+  if (statsEl) {
+    if (Object.keys(statusCounts).length === 0) {
+      statsEl.innerHTML = '';
+    } else {
+      statsEl.innerHTML = Object.entries(statusCounts).map(([s, n]) => {
+        const c = STATUS_COLORS[s] || { bg: 'rgba(255,255,255,0.08)', color: '#fff', border: 'rgba(255,255,255,0.15)' };
+        return `<span style="background:${c.bg};color:${c.color};border:1px solid ${c.border};border-radius:20px;padding:3px 14px;font-size:12px;font-weight:600;">${s.replace('_',' ')}: ${n}</span>`;
+      }).join('');
+    }
+  }
+
+  // Table rows
+  const tbody = document.getElementById('liveTradesTbody');
+  const emptyEl = document.getElementById('liveTradesEmpty');
+  if (tbody) {
+    if (liveOrders.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyEl) emptyEl.style.display = 'block';
+    } else {
+      if (emptyEl) emptyEl.style.display = 'none';
+      tbody.innerHTML = liveOrders.map(function(o) {
+        const s = String(o.status || '').toUpperCase();
+        const c = STATUS_COLORS[s] || { bg: 'rgba(255,255,255,0.08)', color: '#ddd', border: 'rgba(255,255,255,0.1)' };
+        const statusPill = `<span style="background:${c.bg};color:${c.color};border:1px solid ${c.border};border-radius:12px;padding:2px 10px;font-size:11px;font-weight:600;">${s.replace('_',' ')}</span>`;
+        const shortId = String(o.id || '').slice(-8).toUpperCase();
+        const buyer  = o.buyerUsername  || o.buyerEmail  || (o.buyerUserId  ? o.buyerUserId.slice(-6)  : '—');
+        const seller = o.sellerUsername || o.sellerEmail || (o.sellerUserId ? o.sellerUserId.slice(-6) : '—');
+        const amt    = Number(o.amount || o.cryptoAmount || 0).toFixed(4);
+        const asset  = String(o.asset || o.coin || 'USDT').toUpperCase();
+        const created = o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+        const releaseBtn = (s === 'PAID' || s === 'PAYMENT_SENT')
+          ? `<button class="btn-primary btn-sm" data-p2p-action="release-order" data-order-id="${o.id}" style="font-size:11px;padding:3px 10px;">Release</button>`
+          : '';
+        const disputeBtn = s === 'DISPUTED'
+          ? `<button class="btn-danger btn-sm" data-p2p-action="view-dispute" data-order-id="${o.id}" style="font-size:11px;padding:3px 10px;">Dispute</button>`
+          : '';
+        return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+          <td style="padding:10px 20px;font-family:monospace;font-size:12px;color:rgba(255,255,255,0.5);">${shortId}</td>
+          <td style="padding:10px 12px;">${buyer}</td>
+          <td style="padding:10px 12px;">${seller}</td>
+          <td style="padding:10px 12px;text-align:right;font-weight:600;">${amt}</td>
+          <td style="padding:10px 12px;color:rgba(255,255,255,0.5);">${asset}</td>
+          <td style="padding:10px 12px;">${statusPill}</td>
+          <td style="padding:10px 12px;color:rgba(255,255,255,0.4);font-size:12px;">${created}</td>
+          <td style="padding:10px 20px;">${releaseBtn}${disputeBtn}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+  // ── End Live Trades ──────────────────────────────────────────────────────────
 
   const adsList = document.getElementById('p2pAdsList');
   const ads = Array.isArray(adsPayload.ads) ? adsPayload.ads : [];
@@ -3120,6 +3202,7 @@ function wireEventListeners() {
   document.getElementById('p2pAdsList').addEventListener('click', handleP2PActions);
   document.getElementById('p2pDisputesList').addEventListener('click', handleP2PActions);
   document.getElementById('p2pReloadBtn').addEventListener('click', async () => loadP2P());
+  document.getElementById('liveTradesReloadBtn').addEventListener('click', async () => loadP2P());
 
   // User profile drawer - tab switching + close via event delegation
   document.getElementById('userProfileDrawer').addEventListener('click', (e) => {

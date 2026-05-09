@@ -504,6 +504,39 @@
 
       <!-- ── P2P CONTROL ── -->
       <section class="admin-panel hidden" data-panel="p2p">
+
+        <!-- ── Live Trades Monitor ── -->
+        <div class="panel-card" style="margin-bottom:16px;">
+          <div class="panel-card-header">
+            <span class="panel-card-title">🔴 Live P2P Trades</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span id="liveTradesTotalBadge" style="background:rgba(14,203,129,0.15);color:#0ecb81;border:1px solid rgba(14,203,129,0.3);border-radius:20px;padding:2px 12px;font-size:12px;font-weight:700;">0 Active</span>
+              <button id="liveTradesReloadBtn" class="btn-secondary btn-sm">Reload</button>
+            </div>
+          </div>
+          <!-- Status pills -->
+          <div id="liveTradesStats" style="display:flex;flex-wrap:wrap;gap:8px;padding:12px 20px 0;"></div>
+          <!-- Trades table -->
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;" id="liveTradesTable">
+              <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.07);color:rgba(255,255,255,0.4);font-size:11px;text-transform:uppercase;letter-spacing:0.05em;">
+                  <th style="padding:10px 20px;text-align:left;font-weight:500;">Order ID</th>
+                  <th style="padding:10px 12px;text-align:left;font-weight:500;">Buyer</th>
+                  <th style="padding:10px 12px;text-align:left;font-weight:500;">Seller</th>
+                  <th style="padding:10px 12px;text-align:right;font-weight:500;">Amount</th>
+                  <th style="padding:10px 12px;text-align:left;font-weight:500;">Asset</th>
+                  <th style="padding:10px 12px;text-align:left;font-weight:500;">Status</th>
+                  <th style="padding:10px 12px;text-align:left;font-weight:500;">Created</th>
+                  <th style="padding:10px 20px;text-align:left;font-weight:500;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="liveTradesTbody" style="color:rgba(255,255,255,0.85);"></tbody>
+            </table>
+            <div id="liveTradesEmpty" style="padding:32px;text-align:center;color:rgba(255,255,255,0.3);font-size:13px;display:none;">No active P2P trades right now.</div>
+          </div>
+        </div>
+
         <div style="display:grid;gap:16px;grid-template-columns:2fr 1fr;">
           <div class="panel-card">
             <div class="panel-card-header">

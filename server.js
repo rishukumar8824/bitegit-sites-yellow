@@ -3818,6 +3818,23 @@ app.post('/api/merchant/apply', requiresP2PUser, async (req, res) => {
   }
 });
 
+// ── Admin: Live P2P Trades ────────────────────────────────────────────────────
+app.get('/api/admin/p2p/live-trades', requiresAdminSession, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit || 100), 200);
+    const orders = await repos.listP2PLiveOrders({ limit });
+    const statusCounts = {};
+    orders.forEach(o => {
+      const s = String(o.status || 'UNKNOWN').toUpperCase();
+      statusCounts[s] = (statusCounts[s] || 0) + 1;
+    });
+    return res.json({ total: orders.length, statusCounts, orders });
+  } catch (err) {
+    console.error('[admin/live-trades]', err);
+    return res.status(500).json({ message: 'Failed to load live trades.' });
+  }
+});
+
 // ── Admin: P2P Release Escrow (direct) ────────────────────────────────────────
 app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, async (req, res) => {
   try {
