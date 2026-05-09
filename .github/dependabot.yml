@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "security"
+      - "dependencies"
+    ignore:
+      # Mobile build tools — not used in production server
+      - dependency-name: "@capacitor/assets"
+      - dependency-name: "@capacitor/cli"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
