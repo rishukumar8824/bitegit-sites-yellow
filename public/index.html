@@ -124,128 +124,99 @@
       <div data-auth-user-only class="cf-user-action-section" style="position:relative;z-index:5;">
 
         <!-- Balance header -->
+        <style>
+          .hb-wrap{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 16px 0;background:#000;width:100%;box-sizing:border-box;}
+          .hb-left{flex:1;min-width:0;}
+          .hb-label{font-size:12px;color:#888;display:flex;align-items:center;gap:5px;margin-bottom:5px;}
+          .hb-eye{background:none;border:none;color:#888;cursor:pointer;padding:0;display:flex;align-items:center;flex-shrink:0;}
+          .hb-amount-row{display:flex;align-items:center;gap:8px;margin-bottom:3px;flex-wrap:wrap;}
+          .hb-amount{font-size:26px;font-weight:800;color:#fff;letter-spacing:-0.5px;line-height:1.1;}
+          .hb-unit{display:inline-flex;align-items:center;gap:3px;background:#1a1a1a;border:none;border-radius:20px;padding:4px 10px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;}
+          .hb-sub{font-size:12px;color:#666;margin-bottom:0;}
+          .hb-add-btn{background:#fff;color:#000;font-size:13px;font-weight:700;padding:10px 18px;border-radius:12px;text-decoration:none;white-space:nowrap;flex-shrink:0;margin-left:12px;margin-top:2px;display:inline-block;}
+          .hb-picker{position:absolute;left:16px;right:16px;background:#111;border:1px solid #2a2a2a;border-radius:14px;z-index:200;padding:12px 16px;box-shadow:0 10px 30px rgba(0,0,0,0.8);}
+          .hb-picker-title{font-size:11px;color:#666;margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
+          .hb-picker-list{display:flex;flex-wrap:wrap;gap:8px;}
+          .hb-picker-opt{background:#1c1c1c;border:1px solid #2a2a2a;border-radius:20px;color:#ccc;font-size:12px;font-weight:600;padding:6px 16px;cursor:pointer;font-family:inherit;}
+          .hb-picker-opt.active{background:#fff;color:#000;border-color:#fff;}
+        </style>
         <div class="hb-wrap">
           <div class="hb-left">
             <div class="hb-label">
               Total asset value
               <button class="hb-eye" id="hbEyeBtn" onclick="hbToggleVis()">
-                <svg id="hbEyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
-                </svg>
+                <svg id="hbEyeIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
               </button>
             </div>
             <div class="hb-amount-row">
-              <span class="hb-amount" id="hbAmount">––––</span>
+              <span class="hb-amount" id="hbAmount">0.00</span>
               <button class="hb-unit" id="hbUnitBtn" onclick="hbOpenPicker()">
                 <span id="hbUnitLabel">USDT</span>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
             </div>
-            <div class="hb-sub" id="hbSub">≈ ––– USD</div>
+            <div class="hb-sub" id="hbSub">≈ 0.00 USD</div>
           </div>
           <a href="/p2p#deposit" class="hb-add-btn">Add funds</a>
         </div>
-
-        <!-- Currency picker dropdown -->
         <div class="hb-picker" id="hbPicker" style="display:none;">
           <div class="hb-picker-title">Display currency</div>
           <div class="hb-picker-list">
-            <button class="hb-picker-opt active" data-sym="USDT" onclick="hbSelectUnit('USDT',this)">USDT</button>
-            <button class="hb-picker-opt" data-sym="BTC" onclick="hbSelectUnit('BTC',this)">BTC</button>
-            <button class="hb-picker-opt" data-sym="ETH" onclick="hbSelectUnit('ETH',this)">ETH</button>
-            <button class="hb-picker-opt" data-sym="BNB" onclick="hbSelectUnit('BNB',this)">BNB</button>
-            <button class="hb-picker-opt" data-sym="USD" onclick="hbSelectUnit('USD',this)">USD</button>
+            <button class="hb-picker-opt active" onclick="hbSelectUnit('USDT',this)">USDT</button>
+            <button class="hb-picker-opt" onclick="hbSelectUnit('BTC',this)">BTC</button>
+            <button class="hb-picker-opt" onclick="hbSelectUnit('ETH',this)">ETH</button>
+            <button class="hb-picker-opt" onclick="hbSelectUnit('BNB',this)">BNB</button>
+            <button class="hb-picker-opt" onclick="hbSelectUnit('USD',this)">USD</button>
           </div>
         </div>
-
-        <style>
-          .hb-wrap{display:flex;align-items:center;justify-content:space-between;padding:20px 18px 10px;background:#000;}
-          .hb-label{font-size:12px;color:#888;display:flex;align-items:center;gap:6px;margin-bottom:6px;}
-          .hb-eye{background:none;border:none;color:#888;cursor:pointer;padding:0;display:flex;align-items:center;}
-          .hb-amount-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
-          .hb-amount{font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.5px;line-height:1;}
-          .hb-unit{display:flex;align-items:center;gap:3px;background:#1c1c1c;border:none;border-radius:20px;padding:4px 10px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;}
-          .hb-sub{font-size:12px;color:#666;}
-          .hb-add-btn{background:#fff;color:#000;font-size:14px;font-weight:700;padding:11px 20px;border-radius:12px;text-decoration:none;white-space:nowrap;flex-shrink:0;}
-          .hb-picker{position:absolute;left:16px;right:16px;background:#111;border:1px solid #222;border-radius:14px;z-index:100;padding:14px 0;top:auto;box-shadow:0 10px 30px rgba(0,0,0,0.7);}
-          .hb-picker-title{font-size:12px;color:#666;padding:0 16px 10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;}
-          .hb-picker-list{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px;}
-          .hb-picker-opt{background:#1c1c1c;border:1px solid #2a2a2a;border-radius:20px;color:#ccc;font-size:13px;font-weight:600;padding:7px 18px;cursor:pointer;font-family:inherit;transition:all .2s;}
-          .hb-picker-opt.active{background:#fff;color:#000;border-color:#fff;}
-        </style>
-
         <script>
-        var hbVisible = true;
-        var hbUnit = 'USDT';
-        var hbRates = { BTC: 0.000015, ETH: 0.00028, BNB: 0.014, USD: 1.0 };
-
-        function hbToggleVis() {
-          hbVisible = !hbVisible;
-          var icon = document.getElementById('hbEyeIcon');
-          if (!hbVisible) {
-            icon.innerHTML = '<circle cx="12" cy="12" r="10"/><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2"/>';
-            document.getElementById('hbAmount').textContent = '••••••';
-            document.getElementById('hbSub').textContent = '≈ •••• ' + (hbUnit === 'USD' ? 'USD' : 'USD');
+        var hbVisible=true,hbUnit='USDT',hbBal=0;
+        var hbRates={BTC:0.000015,ETH:0.00028,BNB:0.014,USD:1.0};
+        function hbToggleVis(){
+          hbVisible=!hbVisible;
+          var ic=document.getElementById('hbEyeIcon');
+          if(!hbVisible){
+            ic.innerHTML='<circle cx="12" cy="12" r="10"/><line x1="4" y1="4" x2="20" y2="20" stroke-width="2"/>';
+            document.getElementById('hbAmount').textContent='••••••';
+            document.getElementById('hbSub').textContent='≈ •••• USD';
           } else {
-            icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
-            hbRefreshDisplay();
+            ic.innerHTML='<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>';
+            hbShow();
           }
         }
-
-        function hbOpenPicker() {
-          var p = document.getElementById('hbPicker');
-          p.style.display = p.style.display === 'none' ? 'block' : 'none';
-        }
-
-        function hbSelectUnit(sym, el) {
-          hbUnit = sym;
-          document.getElementById('hbUnitLabel').textContent = sym;
-          document.querySelectorAll('.hb-picker-opt').forEach(function(b){ b.classList.remove('active'); });
+        function hbOpenPicker(){var p=document.getElementById('hbPicker');p.style.display=p.style.display==='none'?'block':'none';}
+        function hbSelectUnit(sym,el){
+          hbUnit=sym;
+          document.getElementById('hbUnitLabel').textContent=sym;
+          document.querySelectorAll('.hb-picker-opt').forEach(function(b){b.classList.remove('active');});
           el.classList.add('active');
-          document.getElementById('hbPicker').style.display = 'none';
-          hbRefreshDisplay();
+          document.getElementById('hbPicker').style.display='none';
+          hbShow();
         }
-
-        function hbRefreshDisplay() {
-          if (!hbVisible) return;
-          var raw = parseFloat((window._walletTotalUsdt || window.walletTotalUsdt || 0));
-          var amt, sub;
-          if (hbUnit === 'USDT') {
-            amt = raw.toFixed(2);
-            sub = '≈ ' + raw.toFixed(2) + ' USD';
-          } else if (hbUnit === 'USD') {
-            amt = raw.toFixed(2);
-            sub = '≈ ' + (raw * 0.000015).toFixed(8) + ' BTC';
-          } else {
-            var rate = hbRates[hbUnit] || 1;
-            amt = (raw * rate).toFixed(hbUnit === 'BTC' ? 8 : hbUnit === 'ETH' ? 6 : 4);
-            sub = '≈ ' + raw.toFixed(2) + ' USD';
-          }
-          document.getElementById('hbAmount').textContent = amt;
-          document.getElementById('hbSub').textContent = sub;
+        function hbShow(){
+          if(!hbVisible)return;
+          var amt,sub;
+          if(hbUnit==='USDT'||hbUnit==='USD'){amt=hbBal.toFixed(2);sub='≈ '+hbBal.toFixed(2)+' USD';}
+          else{var r=hbRates[hbUnit]||1;amt=(hbBal*r).toFixed(hbUnit==='BTC'?8:hbUnit==='ETH'?6:4);sub='≈ '+hbBal.toFixed(2)+' USD';}
+          document.getElementById('hbAmount').textContent=amt;
+          document.getElementById('hbSub').textContent=sub;
         }
-
-        // Fetch real balance from API
-        async function hbLoadBalance() {
-          try {
-            var r = await fetch('/api/wallet/balances', { credentials: 'include' });
-            if (!r.ok) return;
-            var d = await r.json();
-            var s = d.summary || d;
-            var bal = parseFloat(s.available_balance || s.total_balance || s.balance || 0);
-            window._walletTotalUsdt = bal;
-            hbRefreshDisplay();
-          } catch(e) {}
+        async function hbLoad(){
+          try{
+            var r=await fetch('/api/p2p/wallet',{credentials:'include'});
+            if(!r.ok)r=await fetch('/api/wallet/summary',{credentials:'include'});
+            if(!r.ok)return;
+            var d=await r.json();
+            var s=d.summary||d.wallet||d;
+            hbBal=parseFloat(s.available_balance||s.total_balance||s.availableBalance||s.balance||0);
+            hbShow();
+          }catch(e){}
         }
-
-        document.addEventListener('DOMContentLoaded', function() {
-          hbLoadBalance();
-          // close picker on outside click
-          document.addEventListener('click', function(e) {
-            if (!e.target.closest('#hbPicker') && !e.target.closest('#hbUnitBtn')) {
-              var p = document.getElementById('hbPicker');
-              if (p) p.style.display = 'none';
+        document.addEventListener('DOMContentLoaded',function(){
+          hbLoad();
+          document.addEventListener('click',function(e){
+            if(!e.target.closest('#hbPicker')&&!e.target.closest('#hbUnitBtn')){
+              var p=document.getElementById('hbPicker');if(p)p.style.display='none';
             }
           });
         });
