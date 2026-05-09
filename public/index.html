@@ -218,8 +218,11 @@
         }
         async function hbLoad(){
           try{
-            var r=await fetch('/api/p2p/wallet',{credentials:'include'});
-            if(!r.ok)r=await fetch('/api/wallet/summary',{credentials:'include'});
+            var tok=localStorage.getItem('bitegit_token')||'';
+            var hdrs={'Cache-Control':'no-store'};
+            if(tok) hdrs['Authorization']='Bearer '+tok;
+            var r=await fetch('/api/p2p/wallet',{credentials:'include',headers:hdrs});
+            if(!r.ok) r=await fetch('/api/wallet/summary',{credentials:'include',headers:hdrs});
             if(!r.ok)return;
             var d=await r.json();
             var s=d.summary||d.wallet||d;

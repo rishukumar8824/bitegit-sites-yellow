@@ -3522,27 +3522,7 @@ async function createP2PAdController(req, res) {
   try {
     const userId = String(req.p2pUser.id || '').trim();
     const username = String(req.p2pUser.username || '').trim();
-    const merchantAccess = await getMerchantAccessState({
-      userId: req.p2pUser.id,
-      username: req.p2pUser.username,
-      email: req.p2pUser.email
-    });
-
-    if (merchantAccess.depositLocked < MERCHANT_ACTIVATION_DEPOSIT) {
-      return res.status(403).json({
-        message: `You need to lock at least ${MERCHANT_ACTIVATION_DEPOSIT} USDT as security deposit to post ads.`,
-        code: 'SECURITY_DEPOSIT_REQUIRED',
-        required: MERCHANT_ACTIVATION_DEPOSIT,
-        current: merchantAccess.depositLocked
-      });
-    }
-
-    if (!merchantAccess.canPostAds) {
-      return res.status(403).json({
-        message: 'Merchant approval is pending. Please wait for admin approval before posting ads.',
-        code: 'MERCHANT_APPROVAL_REQUIRED'
-      });
-    }
+    // No merchant approval or deposit required — any logged-in user can post ads instantly
 
     // Balance check: user must have USDT balance > 0
     try {
