@@ -136,11 +136,11 @@
           .hb-sub{font-size:12px;color:#666;}
           .hb-add-btn{background:#fff;color:#000;font-size:13px;font-weight:700;padding:10px 16px;border-radius:10px;text-decoration:none;white-space:nowrap;flex-shrink:0;display:inline-block;}
           /* Dropdown — narrow, dark, plain text, NO highlight */
-          .hb-picker{position:absolute;left:50px;width:160px;background:#1c1c1c;border-radius:12px;z-index:300;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.95);border:1px solid #2a2a2a;}
-          .hb-picker-opt{background:#1c1c1c !important;border:none !important;outline:none !important;border-bottom:1px solid rgba(255,255,255,0.07) !important;color:#ccc !important;font-size:14px !important;font-weight:400;padding:12px 16px;cursor:pointer;font-family:inherit;text-align:left;width:100%;display:block;-webkit-appearance:none;box-shadow:none !important;}
-          .hb-picker-opt:last-child{border-bottom:none !important;}
-          .hb-picker-opt:focus,.hb-picker-opt:active,.hb-picker-opt:hover,.hb-picker-opt.active{background:#1c1c1c !important;color:#fff !important;outline:none !important;box-shadow:none !important;}
-          .hb-picker-more{color:#777 !important;}
+          .hb-picker{position:absolute;left:50px;width:140px;background:#1c1c1c;border-radius:12px;z-index:300;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.95);border:1px solid #2a2a2a;}
+          .hb-picker-opt{background:#1c1c1c;border:none;outline:none;border-bottom:1px solid rgba(255,255,255,0.07);color:#aaa;font-size:14px;font-weight:400;padding:12px 16px;cursor:pointer;font-family:inherit;text-align:left;width:100%;display:block;-webkit-tap-highlight-color:transparent;user-select:none;}
+          .hb-picker-opt:last-child{border-bottom:none;}
+          .hb-picker-opt:hover{color:#fff;background:#242424;}
+          .hb-picker-more{color:#666;}
         </style>
         <div class="hb-wrap">
           <div class="hb-left">
@@ -172,11 +172,11 @@
         </div>
         <!-- Clean dropdown like screenshot -->
         <div class="hb-picker" id="hbPicker" style="display:none;">
-          <button class="hb-picker-opt" onclick="hbSelectUnit('BTC',this)">BTC</button>
-          <button class="hb-picker-opt active" onclick="hbSelectUnit('USDT',this)">USDT</button>
-          <button class="hb-picker-opt" onclick="hbSelectUnit('USDC',this)">USDC</button>
-          <button class="hb-picker-opt" onclick="hbSelectUnit('USD',this)">USD</button>
-          <button class="hb-picker-opt hb-picker-more" onclick="document.getElementById('hbPicker').style.display='none'">More →</button>
+          <div class="hb-picker-opt" onclick="hbSelectUnit('BTC',this)">BTC</div>
+          <div class="hb-picker-opt" onclick="hbSelectUnit('USDT',this)">USDT</div>
+          <div class="hb-picker-opt" onclick="hbSelectUnit('USDC',this)">USDC</div>
+          <div class="hb-picker-opt" onclick="hbSelectUnit('USD',this)">USD</div>
+          <div class="hb-picker-opt hb-picker-more" onclick="document.getElementById('hbPicker').style.display='none'">More →</div>
         </div>
         <script>
         var hbVisible=true,hbUnit='USDT',hbBal=0;
