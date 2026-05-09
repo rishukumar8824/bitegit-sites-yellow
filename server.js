@@ -2703,7 +2703,7 @@ app.post(
       }
 
       return res.status(201).json({
-        message: 'Withdrawal request created.',
+        message: 'Your withdrawal request has been submitted successfully.',
         withdrawal
       });
     } catch (error) {

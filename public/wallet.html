@@ -1289,10 +1289,12 @@
           return r.json().then(function(d) { return { ok: r.ok, data: d }; });
         })
         .then(function(result) {
-          if (result.ok && (result.data.requestId || result.data.id)) {
-            return _fakeRes({ status: 'success', message: 'Withdrawal request submitted' });
+          // server returns { message, withdrawal } on 201 — check withdrawal obj or ok status
+          var d = result.data;
+          if (result.ok && (d.withdrawal || d.requestId || d.id || d._id)) {
+            return _fakeRes({ status: 'success', message: 'Withdrawal submitted successfully' });
           }
-          return _fakeRes({ status: 'error', message: result.data.message || 'Withdrawal failed' });
+          return _fakeRes({ status: 'error', message: d.message || d.error || 'Withdrawal failed' });
         })
         .catch(function() { return _fakeRes({ status: 'error', message: 'Network error' }); });
     }
@@ -1974,11 +1976,11 @@
       loadWalletBalances && loadWalletBalances();
     }, 500);
 
-    // Redirect to wallet overview after 2s
+    // Redirect to wallet overview after 1.5s
     setTimeout(function() {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
       showScreen('screenOverview');
-    }, 2000);
+    }, 1500);
   }
 
   function showToast(msg) {
