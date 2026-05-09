@@ -2424,9 +2424,10 @@ app.get('/api/wallet/summary', requiresP2PUser, async (req, res) => {
     let pendingWithdrawalSum = 0;
     try {
       const allWds = await walletService.listWithdrawalRequests(req.p2pUser.id, { limit: 100 });
-      const pendingWds = allWds.filter(w => String(w.status || '').toLowerCase() === 'pending');
-      pendingWithdrawalSum = pendingWds.reduce((sum, w) => sum + Number(w.amount || 0), 0);
-      console.log(`[wallet/summary] userId=${req.p2pUser.id} lockedBalance=${wallet.lockedBalance} pendingWithdrawals=${pendingWithdrawalSum} count=${pendingWds.length}`);
+      // pending = not yet sent; approved = admin approved but funds not sent yet — both still "in flight"
+      const inFlightWds = allWds.filter(w => ['pending', 'approved'].includes(String(w.status || '').toLowerCase()));
+      pendingWithdrawalSum = inFlightWds.reduce((sum, w) => sum + Number(w.amount || 0), 0);
+      console.log(`[wallet/summary] userId=${req.p2pUser.id} lockedBalance=${wallet.lockedBalance} inFlightWithdrawals=${pendingWithdrawalSum} count=${inFlightWds.length}`);
     } catch (err) {
       console.error('[wallet/summary] pendingWithdrawalSum query failed:', err.message);
     }
