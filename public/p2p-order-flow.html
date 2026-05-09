@@ -2929,7 +2929,12 @@
     var titleEl = document.getElementById('screenBuyTitle');
     if (titleEl) titleEl.textContent = takerVerb + ' USDT';
     var buyBtnEl = document.getElementById('buyBtn');
-    if (buyBtnEl && !buyBtnEl.disabled) buyBtnEl.textContent = takerVerb + ' USDT with 0 fees';
+    if (buyBtnEl && !buyBtnEl.disabled) {
+      buyBtnEl.textContent = takerVerb + ' USDT with 0 fees';
+      // Sell = red, Buy = teal
+      buyBtnEl.style.background = (ad.side === 'sell') ? '#f6465d' : '';
+      buyBtnEl.style.color = '#000';
+    }
     var price = Number(ad.price || 101.3);
     setText('buy-price', '₹' + price.toFixed(2));
     var sellerName = ad.createdByUsername || ad.advertiser || 'SELLER';

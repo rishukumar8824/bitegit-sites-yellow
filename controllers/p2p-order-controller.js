@@ -229,8 +229,10 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
       } catch(_) {}
 
       const now = Date.now();
-      const offerReleaseMinutes = Math.max(1, Math.min(120, Number(offer.releaseTime) || 0));
-      const effectiveTtlMs = offerReleaseMinutes > 0 ? offerReleaseMinutes * 60 * 1000 : orderTtlMs;
+      // Default 15 min if releaseTime is 0/missing — Math.max(1,...) was causing 1-min expiry
+      const rawRelease = Number(offer.releaseTime) || 0;
+      const offerReleaseMinutes = rawRelease > 0 ? Math.min(120, rawRelease) : 15;
+      const effectiveTtlMs = offerReleaseMinutes * 60 * 1000;
       const payWindowMinutes = Math.max(1, Math.round(effectiveTtlMs / 60000));
       const orderDoc = buildP2POrderDocument({
         id: createOrderId(),

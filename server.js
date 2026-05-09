@@ -3475,6 +3475,29 @@ app.get('/api/p2p/ads/:adId', async (req, res) => {
   }
 });
 
+// Expire order (called by frontend timer when countdown hits 0)
+app.post('/api/p2p/orders/:orderId/expire', requiresP2PUser, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const cols = getCollections();
+    const order = await cols.p2pOrders.findOne({ id: orderId });
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    const status = String(order.status || '').toUpperCase();
+    // Only expire if still in created/pending state
+    if (!['CREATED', 'PENDING'].includes(status)) {
+      return res.json({ success: true, order: normalizeOrderState(order) });
+    }
+    const now = new Date();
+    const expireMsg = { id: `msg_${Date.now()}`, sender: 'System', role: 'system', messageType: 'system', isSystem: true, text: 'Order expired because the buyer did not complete payment in time.', createdAt: now };
+    await cols.p2pOrders.updateOne({ id: orderId }, { $set: { status: 'EXPIRED', updatedAt: now, cancelledAt: now }, $push: { messages: expireMsg } });
+    const updated = await cols.p2pOrders.findOne({ id: orderId });
+    broadcastOrderEvent(orderId, 'order_update', { order: normalizeOrderState(updated) });
+    return res.json({ success: true, order: normalizeOrderState(updated) });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to expire order.' });
+  }
+});
+
 // Convenience: mark order paid
 app.post('/api/p2p/orders/:orderId/mark-paid', requiresP2PUser, async (req, res) => {
   try {
