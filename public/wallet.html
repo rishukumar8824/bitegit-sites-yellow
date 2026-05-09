@@ -1842,20 +1842,35 @@
       .catch(function(){});
   }
 
-  function submitWithdraw() {
+  async function submitWithdraw() {
     var addr = document.getElementById('wdAddrInput').value.trim();
     var amt = parseFloat(document.getElementById('wdAmtInput').value);
     var net = WD_NETWORKS[currentWdNetwork];
     if(!addr) { showToast('Please enter withdrawal address'); return; }
     if(!amt || amt < net.min) { showToast('Minimum withdrawal is ' + net.min + ' USDT'); return; }
-    // KYC mandatory for withdrawal
-    var kycSt = (typeof currentUser !== 'undefined' && currentUser && currentUser.kyc)
-      ? (currentUser.kyc.status || '').toLowerCase() : '';
-    if (kycSt !== 'verified' && kycSt !== 'approved') {
-      showToast('KYC verification required to withdraw. Please complete KYC first.');
-      setTimeout(function() { window.location.href = '/p2p#kyc'; }, 1200);
-      return;
+
+    // KYC check — fetch live from server (currentUser not available on this page)
+    try {
+      var kycRes = await fetch('/api/p2p/kyc/status', { credentials: 'include' });
+      if (kycRes.status === 401) {
+        showToast('Please log in to continue.');
+        setTimeout(function() { window.location.href = '/auth'; }, 1200);
+        return;
+      }
+      if (kycRes.ok) {
+        var kycData = await kycRes.json();
+        var kycSt = ((kycData.kyc && kycData.kyc.status) || '').toLowerCase();
+        if (kycSt !== 'verified' && kycSt !== 'approved') {
+          showToast('KYC verification required to withdraw. Please complete KYC first.');
+          setTimeout(function() { window.location.href = '/p2p#kyc'; }, 1200);
+          return;
+        }
+      }
+      // if fetch fails for any other reason, allow through (server will re-validate)
+    } catch(e) {
+      // network error — let server-side validate, don't block user
     }
+
     // Store for confirm modal
     _pendingWithdraw = { addr:addr, amt:amt, net:net, netKey:currentWdNetwork };
     // Populate confirm modal
