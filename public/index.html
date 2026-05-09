@@ -509,78 +509,67 @@
       </section>
 
       <section class="cf-app-block cf-mobile-promo-video cf-reveal" aria-label="Mobile app promo">
-        <div class="dual-promo-wrap">
-          <!-- Left: phone mockup -->
-          <div class="promo-phone">
-            <div class="promo-phone-notch"></div>
-            <video class="promo-phone-video" autoplay muted loop playsinline preload="metadata">
+        <div class="promo2-wrap">
+          <!-- Phone mockup: exact 758:1632 ratio, nothing cut -->
+          <div class="promo2-phone">
+            <div class="promo2-notch"></div>
+            <video autoplay muted loop playsinline preload="metadata" style="width:100%;height:100%;object-fit:fill;display:block;">
               <source src="/videos/bitget-1.webm" type="video/webm" />
               <source src="/videos/mobile.mp4" type="video/mp4" />
             </video>
           </div>
-          <!-- Right: floating card, no phone frame -->
-          <div class="promo-side-card">
-            <video class="promo-side-video" autoplay muted loop playsinline preload="metadata">
+          <!-- Side card: 740:548 natural ratio, no phone frame -->
+          <div class="promo2-card">
+            <video autoplay muted loop playsinline preload="metadata" style="width:100%;height:100%;object-fit:fill;display:block;">
               <source src="/videos/bitget-2.webm" type="video/webm" />
             </video>
           </div>
         </div>
         <style>
-          .dual-promo-wrap {
+          .promo2-wrap {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 16px;
-            padding: 32px 16px;
+            gap: 14px;
+            padding: 36px 16px;
           }
-          /* Phone mockup */
-          .promo-phone {
+          .promo2-phone {
             position: relative;
-            width: 170px;
-            height: 340px;
-            background: #0a0a0a;
-            border-radius: 32px;
-            border: 2.5px solid #2a2a3a;
-            box-shadow: 0 24px 56px rgba(0,0,0,0.65), inset 0 0 0 1px rgba(255,255,255,0.06);
+            /* 758:1632 ≈ 1:2.15 — exact phone video ratio, zero crop */
+            width: 168px;
+            height: 362px;
+            background: #000;
+            border-radius: 30px;
+            border: 2.5px solid #2c2c3e;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.05);
             overflow: hidden;
             flex-shrink: 0;
           }
-          .promo-phone-notch {
+          .promo2-notch {
             position: absolute;
-            top: 9px;
+            top: 8px;
             left: 50%;
             transform: translateX(-50%);
-            width: 52px;
-            height: 9px;
+            width: 48px;
+            height: 8px;
             background: #000;
             border-radius: 8px;
             z-index: 10;
           }
-          .promo-phone-video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-          }
-          /* Side floating card — no phone frame */
-          .promo-side-card {
-            width: 155px;
-            height: 220px;
-            border-radius: 16px;
+          .promo2-card {
+            /* 740:548 ≈ 1.35:1 — exact side video ratio, zero crop */
+            width: 210px;
+            height: 156px;
+            border-radius: 14px;
             overflow: hidden;
-            box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.55);
             flex-shrink: 0;
+            background: #0d0d0d;
           }
-          .promo-side-video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-          }
-          @media (max-width: 480px) {
-            .promo-phone { width: 130px; height: 260px; }
-            .promo-side-card { width: 115px; height: 165px; }
-            .dual-promo-wrap { gap: 10px; padding: 20px 8px; }
+          @media (max-width: 520px) {
+            .promo2-phone { width: 130px; height: 280px; border-radius: 24px; }
+            .promo2-card  { width: 155px; height: 115px; border-radius: 10px; }
+            .promo2-wrap  { gap: 10px; padding: 20px 8px; }
           }
         </style>
       </section>
