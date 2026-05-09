@@ -22,7 +22,8 @@
     html:not(.auth-user) [data-auth-user-only] { display: none !important; }
     html:not(.auth-guest) [data-auth-guest-only] { display: none !important; }
     html.auth-guest [data-auth-guest-only] { display: block; }
-    html.auth-user [data-auth-user-only] { display: flex; }
+    html.auth-user [data-auth-user-only] { display: block; }
+    html.auth-user .cf-user-action-section { display: block; }
 
     /* ── Scroll Reveal: smooth slide up ── */
     .js-reveal .cf-reveal {
