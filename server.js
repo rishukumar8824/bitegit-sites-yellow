@@ -3563,17 +3563,22 @@ async function createP2PAdController(req, res) {
     } catch (_) {}
 
     // Enforce 1 buy + 1 sell limit per merchant
-    const requestedSide = String(req.body.side || req.body.type || '').toLowerCase();
-    if (!requestedSide || !['buy', 'sell'].includes(requestedSide)) {
-      return res.status(400).json({ message: 'Ad side must be buy or sell.' });
+    // req.body.type / req.body.side / req.body.adType all accepted
+    const rawAdType = String(req.body.type || req.body.adType || req.body.side || '').toLowerCase();
+    if (!rawAdType || !['buy', 'sell'].includes(rawAdType)) {
+      return res.status(400).json({ message: 'Ad type must be buy or sell.' });
     }
+    // Ads are stored with side = OPPOSITE of adType (taker's perspective):
+    //   SELL ad → side:'buy'  (buyer can take it)
+    //   BUY  ad → side:'sell' (seller can take it)
+    const storedSide = rawAdType === 'sell' ? 'buy' : 'sell';
     const existingOfSide = await cols.p2pOffers.countDocuments({
       $or: [{ createdByUserId: userId }, { advertiser: username }],
-      side: requestedSide,
+      side: storedSide,
       status: { $ne: 'DELETED' }
     });
     if (existingOfSide >= 1) {
-      return res.status(400).json({ message: `You already have an active ${requestedSide} ad. Delete it first before posting a new one.` });
+      return res.status(400).json({ message: `You already have an active ${rawAdType} ad. Delete it first before posting a new one.` });
     }
 
     const savedOffer = await walletService.createEscrowAd({
