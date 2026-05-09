@@ -593,6 +593,7 @@
       <div class="stat-row"><span class="slabel">30D average release time</span><span class="sval" id="stat-avg-release">&lt; 5 min</span></div>
       <div class="stat-row"><span class="slabel">Completed orders (both parties)</span><span class="sval" id="stat-completed">0</span></div>
       <div class="stat-row"><span class="slabel">Account signup time</span><span class="sval" id="stat-signup">—</span></div>
+      <div class="stat-row" id="stat-seller-bal-row" style="display:none;"><span class="slabel">Seller available</span><span class="sval" id="stat-seller-bal">—</span></div>
     </div>
 
     <div class="bottom-fixed" style="position:sticky;bottom:0;z-index:50;left:unset;transform:none;width:100%;max-width:100%;">
@@ -2946,6 +2947,17 @@
     setText('stat-completed', String(ad.completedOrdersBothParties || 0));
     var createdAt = ad.createdAt ? new Date(ad.createdAt).toISOString().split('T')[0].replace(/-/g, '.') : '—';
     setText('stat-signup', createdAt);
+    // Seller available balance
+    var selBalRow = document.getElementById('stat-seller-bal-row');
+    var selBalVal = Number(ad.sellerAvailableBalance || 0);
+    if (selBalRow) {
+      if (selBalVal > 0) {
+        setText('stat-seller-bal', selBalVal.toFixed(2) + ' USDT');
+        selBalRow.style.display = '';
+      } else {
+        selBalRow.style.display = 'none';
+      }
+    }
     var minLim = ad.minLimit || 1000;
     var maxLim = ad.maxLimit || 6000;
     setText('limitText', '₹' + fmtInr(minLim) + ' - ₹' + fmtInr(maxLim));
