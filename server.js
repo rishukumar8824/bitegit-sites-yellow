@@ -3207,7 +3207,7 @@ app.get('/api/p2p/public', async (req, res) => {
       createdByUserId: o.createdByUserId,
       merchantBadge: o.merchantBadge,
       releaseTime: o.releaseTime || '15',
-      onlineStatus: (o.lastActiveAt && (Date.now() - new Date(o.lastActiveAt).getTime()) < 300000) ? 'online' : 'offline',
+      onlineStatus: (o.lastActiveAt && (Date.now() - new Date(o.lastActiveAt).getTime()) < 3600000) ? 'online' : 'offline', // merchants: 1 hour
     });
     const sell_ads = allOffers.filter(o => o.side === 'sell').map(mapAd).sort((a, b) => a.price - b.price);
     const buy_ads  = allOffers.filter(o => o.side === 'buy').map(mapAd).sort((a, b) => a.price - b.price);
@@ -3299,8 +3299,9 @@ app.get('/api/p2p/offers', async (req, res) => {
         advertiserName,
         offer.merchantBadges || (merchantBadge ? [merchantBadge] : null)
       );
+      // Merchants (have active ads) → 1 hour window; normal users → 5 min
       const onlineStatus =
-        offer.lastActiveAt && (Date.now() - new Date(offer.lastActiveAt).getTime()) < 300000
+        offer.lastActiveAt && (Date.now() - new Date(offer.lastActiveAt).getTime()) < 3600000
           ? 'online'
           : 'offline';
 

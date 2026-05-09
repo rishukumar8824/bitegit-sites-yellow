@@ -853,18 +853,26 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     const totalBase = requiresPostFilter ? credentials.length : await p2pCredentials.countDocuments(query);
     const userIds = credentials.map((item) => makeP2PUserId(item.email));
 
-    const [profiles, walletRows] = await Promise.all([
+    const [profiles, walletRows, activeAdsRows] = await Promise.all([
       adminUserProfiles.find({ userId: { $in: userIds } }).toArray(),
-      wallets.find({ userId: { $in: userIds } }).toArray()
+      wallets.find({ userId: { $in: userIds } }).toArray(),
+      collections.p2pOffers
+        ? collections.p2pOffers.find(
+            { createdByUserId: { $in: userIds }, status: { $in: ['ACTIVE', 'PAUSED'] } },
+            { projection: { createdByUserId: 1 } }
+          ).toArray()
+        : Promise.resolve([])
     ]);
 
     const profileMap = new Map(profiles.map((item) => [item.userId, item]));
     const walletMap = new Map(walletRows.map((item) => [item.userId, item]));
+    const merchantSet = new Set((activeAdsRows || []).map((o) => o.createdByUserId));
 
     let users = credentials.map((item) => {
       const userId = makeP2PUserId(item.email);
       const profile = profileMap.get(userId);
       const wallet = walletMap.get(userId);
+      const isMerchant = merchantSet.has(userId);
       return {
         userId,
         email: item.email,
@@ -874,7 +882,8 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
         balance: getAvailableBalance(wallet),
         lockedBalance: toNumber(wallet?.lockedBalance, 0),
         updatedAt: toDate(item.updatedAt || item.createdAt || Date.now()).toISOString(),
-        lastActiveAt: item.lastActiveAt ? toDate(item.lastActiveAt).toISOString() : null
+        lastActiveAt: item.lastActiveAt ? toDate(item.lastActiveAt).toISOString() : null,
+        isMerchant
       };
     });
 
