@@ -1171,20 +1171,59 @@ function getRequestIp(req) {
   return firstForwarded || String(req.ip || req.connection?.remoteAddress || 'unknown');
 }
 
+// In-memory geo cache: avoid hammering ip-api.com for same IP
+const _geoCache = new Map();
+const GEO_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
 function getGeoInfo(ip) {
-  if (!geoip || !ip || ip === 'unknown') return {};
+  // Fast offline fallback for private/local IPs
+  const cleanIp = String(ip || '').replace(/^::ffff:/, '').trim();
+  if (!cleanIp || cleanIp === 'unknown' || cleanIp === '127.0.0.1' || cleanIp.startsWith('192.168.') || cleanIp.startsWith('10.') || cleanIp === '::1') {
+    return {};
+  }
+
+  // Return cached result if fresh
+  const cached = _geoCache.get(cleanIp);
+  if (cached && (Date.now() - cached.ts) < GEO_CACHE_TTL) {
+    return cached.data;
+  }
+
+  // Fallback: try geoip-lite offline first (instant)
+  let offlineResult = {};
+  if (geoip) {
+    try {
+      const geo = geoip.lookup(cleanIp);
+      if (geo) offlineResult = { country: geo.country || '', region: geo.region || '', city: geo.city || '', timezone: geo.timezone || '', ll: geo.ll || [] };
+    } catch(_) {}
+  }
+
+  // Fire async ip-api.com lookup for accurate city/region data (non-blocking)
   try {
-    const cleanIp = ip.replace(/^::ffff:/, '');
-    const geo = geoip.lookup(cleanIp);
-    if (!geo) return {};
-    return {
-      country: geo.country || '',
-      region: geo.region || '',
-      city: geo.city || '',
-      timezone: geo.timezone || '',
-      ll: geo.ll || []
-    };
-  } catch(e) { return {}; }
+    const http = require('http');
+    http.get(`http://ip-api.com/json/${cleanIp}?fields=status,country,countryCode,regionName,city,lat,lon,timezone,isp`, (res) => {
+      let raw = '';
+      res.on('data', d => { raw += d; });
+      res.on('end', () => {
+        try {
+          const d = JSON.parse(raw);
+          if (d.status === 'success') {
+            const result = {
+              country: d.countryCode || '',
+              region: d.regionName || '',
+              city: d.city || '',
+              timezone: d.timezone || '',
+              isp: d.isp || '',
+              ll: [d.lat || 0, d.lon || 0]
+            };
+            _geoCache.set(cleanIp, { data: result, ts: Date.now() });
+          }
+        } catch(_) {}
+      });
+    }).on('error', () => {});
+  } catch(_) {}
+
+  // Return offline result now; next request will get accurate cached result
+  return offlineResult;
 }
 
 const loginAttemptLimiter = createIpAttemptLimiter({
