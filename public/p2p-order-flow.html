@@ -541,7 +541,7 @@
   <div class="screen" id="screen-buy">
     <div class="topbar">
       <div class="back-btn" id="buyBackBtn">←</div>
-      <div class="title">Buy USDT</div>
+      <div class="title" id="screenBuyTitle">Buy USDT</div>
     </div>
 
     <div class="tabs">
@@ -2924,6 +2924,12 @@
   function renderBuyForm() {
     if (!currentAd) return;
     var ad = currentAd;
+    // ad.side = taker's side: 'sell' → taker SELLS (BUY ad), 'buy' → taker BUYS (SELL ad)
+    var takerVerb = (ad.side === 'sell') ? 'Sell' : 'Buy';
+    var titleEl = document.getElementById('screenBuyTitle');
+    if (titleEl) titleEl.textContent = takerVerb + ' USDT';
+    var buyBtnEl = document.getElementById('buyBtn');
+    if (buyBtnEl && !buyBtnEl.disabled) buyBtnEl.textContent = takerVerb + ' USDT with 0 fees';
     var price = Number(ad.price || 101.3);
     setText('buy-price', '₹' + price.toFixed(2));
     var sellerName = ad.createdByUsername || ad.advertiser || 'SELLER';
@@ -3083,7 +3089,8 @@
     } catch (e) {
       showToast(e && e.name === 'AbortError' ? 'Request timed out. Try again.' : 'Error: ' + (e && e.message || 'unknown'));
     } finally {
-      if (btn) { btn.textContent = 'Buy USDT with 0 fees'; btn.style.opacity = ''; }
+      var _tv = (currentAd && currentAd.side === 'sell') ? 'Sell' : 'Buy';
+      if (btn) { btn.textContent = _tv + ' USDT with 0 fees'; btn.style.opacity = ''; }
     }
   }
 
