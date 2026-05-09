@@ -191,8 +191,9 @@
         <div class="p2p-alert-bar" id="p2pAlertBar" style="position:relative;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00b8d4" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           <span>Do not share personal contact details. Always verify payment information independently.</span>
-          <button onclick="document.getElementById('p2pAlertBar').style.display='none'" type="button" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,0.5);font-size:14px;cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0;">✕</button>
+          <button onclick="sessionStorage.setItem('p2pAlertDismissed','1');document.getElementById('p2pAlertBar').style.display='none'" type="button" style="margin-left:auto;background:none;border:none;color:rgba(255,255,255,0.5);font-size:14px;cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0;">✕</button>
         </div>
+        <script>if(sessionStorage.getItem('p2pAlertDismissed')==='1'){var b=document.getElementById('p2pAlertBar');if(b)b.style.display='none';}</script>
 
         <!-- Desktop table -->
         <div class="p2p-table-wrap">
