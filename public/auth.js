@@ -49,7 +49,7 @@ const authNavClose = document.getElementById('authNavClose');
 const urlParams = new URLSearchParams(window.location.search);
 
 function resolveSafeRedirect(rawRedirect) {
-  const fallback = '/home';
+  const fallback = '/';
   const value = String(rawRedirect || '').trim();
   if (!value) {
     return fallback;
