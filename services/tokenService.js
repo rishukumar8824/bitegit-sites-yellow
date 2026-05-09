@@ -1,7 +1,9 @@
 const crypto = require('crypto');
 
-const ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60;
-const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+// Access tokens expire in 15 minutes — short-lived to limit blast radius of token theft.
+// Refresh tokens expire in 7 days — users are re-authenticated silently via /api/auth/refresh.
+const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;       // 15 minutes
+const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 
 // In-memory cache — loaded once from MongoDB on first call
 let _cachedJwtSecret = null;

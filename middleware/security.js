@@ -13,6 +13,17 @@ try {
   rateLimitFactory = null;
 }
 
+/**
+ * Extract a rate-limiting key from the request.
+ * Uses Express's req.ip (which respects trust proxy) instead of blindly trusting
+ * X-Forwarded-For, preventing clients from forging their IP to bypass rate limits.
+ */
+function getRateLimitKey(req) {
+  // req.ip is set by Express after applying trust-proxy rules — safe to use
+  const ip = String(req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown').trim();
+  return ip;
+}
+
 function createFallbackRateLimiter({ windowMs, max, message, skip }) {
   const state = new Map();
 
@@ -20,8 +31,7 @@ function createFallbackRateLimiter({ windowMs, max, message, skip }) {
     if (req.method === 'OPTIONS' || (typeof skip === 'function' && skip(req))) {
       return next();
     }
-    const forwardedRaw = String(req.headers['x-forwarded-for'] || '').trim();
-    const ip = forwardedRaw.split(',')[0].trim() || String(req.ip || req.connection?.remoteAddress || 'unknown');
+    const ip = getRateLimitKey(req);
     const now = Date.now();
     const existing = state.get(ip);
 
@@ -55,6 +65,8 @@ function buildRateLimiter({ windowMs, max, message, skip }) {
     max,
     standardHeaders: true,
     legacyHeaders: false,
+    // Use Express-resolved IP (respects trust proxy) to prevent X-Forwarded-For spoofing
+    keyGenerator: (req) => getRateLimitKey(req),
     skip: (req) => req.method === 'OPTIONS' || (typeof skip === 'function' && skip(req)),
     handler: (req, res) => {
       const retryAfterFromHeader = Number(res.getHeader('Retry-After'));

@@ -1353,8 +1353,9 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     }
 
     const now = new Date();
+    // Atomic CAS: only update if status is still PENDING — prevents double-credit race condition
     const result = await adminDeposits.findOneAndUpdate(
-      { id: normalizedDepositId },
+      { id: normalizedDepositId, status: 'PENDING' },
       {
         $set: {
           status: normalizedDecision,
@@ -1370,7 +1371,12 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
 
     const _doc = result?.value ?? result;
     if (!_doc) {
-      throw new Error('Deposit request not found');
+      // Could not claim — either already processed by another request, or status changed
+      const recheck = await adminDeposits.findOne({ id: normalizedDepositId });
+      if (!recheck) throw new Error('Deposit request not found');
+      const recheckStatus = String(recheck.status || '').toUpperCase();
+      if (recheckStatus === normalizedDecision) return recheck; // idempotent
+      throw new Error(`Cannot process deposit: current status is "${recheckStatus}". It may have already been reviewed.`);
     }
 
     return _doc;

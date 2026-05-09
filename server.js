@@ -1815,14 +1815,11 @@ app.post('/api/p2p/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    let userRole = tokenService.normalizeRole(existingCredential?.role || 'USER');
+    // SECURITY: Do NOT auto-create accounts on login — return 401 if not registered
     if (!existingCredential) {
-      const hash = repos.hashPassword(password);
-      await repos.setP2PCredential(email, hash, {
-        role: 'USER'
-      });
-      userRole = 'USER';
+      return res.status(401).json({ message: 'Invalid email or password.' });
     }
+    let userRole = tokenService.normalizeRole(existingCredential.role || 'USER');
 
     const { token, user } = await createP2PUserSession(email, userRole);
     const tokenPair = await issueAuthTokenPairForUser(user);
@@ -3844,10 +3841,23 @@ app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, a
   try {
     const orderId = String(req.params.orderId || '').trim();
     const { p2pOrders, wallets } = getCollections();
-    const order = await p2pOrders.findOne({ id: orderId });
-    if (!order) return res.status(404).json({ message: 'Order not found.' });
     const now = Date.now();
     const adminLabel = process.env.ADMIN_EMAIL || 'admin';
+
+    // Atomic: only transition if status is ESCROW_LOCKED or DISPUTE — prevents double-release
+    const claimResult = await p2pOrders.findOneAndUpdate(
+      { id: orderId, status: { $in: ['ESCROW_LOCKED', 'DISPUTE', 'ESCROW_HELD'] } },
+      { $set: { status: 'RELEASING', updatedAt: now } },
+      { returnDocument: 'after' }
+    );
+    const order = claimResult?.value ?? claimResult;
+    if (!order) {
+      // Could not claim — either doesn't exist or already released
+      const existing = await p2pOrders.findOne({ id: orderId });
+      if (!existing) return res.status(404).json({ message: 'Order not found.' });
+      return res.status(409).json({ message: `Cannot release order in status "${existing.status}". Already released or not eligible.` });
+    }
+
     // Credit buyer wallet
     const buyerId = String(order.buyerUserId || '');
     const asset = String(order.asset || 'USDT');
@@ -3859,7 +3869,8 @@ app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, a
         { upsert: true }
       );
     }
-    // Update order status + push system message
+
+    // Finalize order status
     await p2pOrders.updateOne({ id: orderId }, {
       $set: { status: 'RELEASED', releasedAt: now, releasedByAdmin: adminLabel, updatedAt: now },
       $push: { messages: { id: 'msg_' + now + '_release', sender: 'system', senderRole: 'system',
@@ -4854,16 +4865,10 @@ app.get('/api/p2p/me/stream', requiresP2PUser, (req, res) => {
 });
 
 // ── Admin Support SSE — live notify ──────────────────────────────────────────
-app.get('/api/admin/support/live-notify', async (req, res) => {
-  try {
-    const cookies = parseCookies(req);
-    const accessToken = String(cookies[ADMIN_ACCESS_COOKIE_NAME] || '').trim();
-    if (!accessToken) return res.status(401).end();
-  } catch(_) { return res.status(401).end(); }
+app.get('/api/admin/support/live-notify', requiresAdminSession, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.flushHeaders();
   adminSupportSseClients.add(res);
   res.write(': connected\n\n');
@@ -4872,16 +4877,10 @@ app.get('/api/admin/support/live-notify', async (req, res) => {
 });
 
 // ── Admin: Withdrawal live-notify SSE ─────────────────────────────────────────
-app.get('/api/admin/withdrawal/live-notify', async (req, res) => {
-  try {
-    const cookies = parseCookies(req);
-    const accessToken = String(cookies[ADMIN_ACCESS_COOKIE_NAME] || '').trim();
-    if (!accessToken) return res.status(401).end();
-  } catch(_) {}
+app.get('/api/admin/withdrawal/live-notify', requiresAdminSession, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.flushHeaders();
   adminWithdrawalSseClients.add(res);
   res.write(': connected\n\n');
@@ -4890,16 +4889,10 @@ app.get('/api/admin/withdrawal/live-notify', async (req, res) => {
 });
 
 // ── Admin: New user registration SSE ──────────────────────────────────────────
-app.get('/api/admin/user/live-notify', async (req, res) => {
-  try {
-    const cookies = parseCookies(req);
-    const accessToken = String(cookies[ADMIN_ACCESS_COOKIE_NAME] || '').trim();
-    if (!accessToken) return res.status(401).end();
-  } catch(_) {}
+app.get('/api/admin/user/live-notify', requiresAdminSession, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.flushHeaders();
   adminNewUserSseClients.add(res);
   res.write(': connected\n\n');
@@ -4908,16 +4901,10 @@ app.get('/api/admin/user/live-notify', async (req, res) => {
 });
 
 // ── Admin: Deposit request SSE ────────────────────────────────────────────────
-app.get('/api/admin/deposit/live-notify', async (req, res) => {
-  try {
-    const cookies = parseCookies(req);
-    const accessToken = String(cookies[ADMIN_ACCESS_COOKIE_NAME] || '').trim();
-    if (!accessToken) return res.status(401).end();
-  } catch(_) {}
+app.get('/api/admin/deposit/live-notify', requiresAdminSession, (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.flushHeaders();
   adminDepositSseClients.add(res);
   res.write(': connected\n\n');
@@ -5939,8 +5926,27 @@ async function boot() {
       p2pEmailService,
       broadcastUserEvent
     });
-    // One active order per user check
+    // One active order per user check + KYC gate
     app.post('/api/p2p/orders', requiresP2PUser, async (req, res, next) => {
+      // KYC verification required before placing any trade order
+      try {
+        const userEmail = String(req.p2pUser?.email || '').trim();
+        if (userEmail) {
+          const kycProfile = await getP2PKycProfileByEmail(userEmail);
+          const kycStatus = String(kycProfile?.status || kycProfile?.kycStatus || '').toUpperCase();
+          if (kycStatus !== 'APPROVED' && kycStatus !== 'VERIFIED') {
+            return res.status(403).json({
+              success: false,
+              message: 'KYC verification required before placing orders. Please complete your identity verification.',
+              code: 'KYC_REQUIRED'
+            });
+          }
+        }
+      } catch (kycErr) {
+        console.error('[order-create] KYC check error:', kycErr.message);
+        // Do not block order if KYC check itself errors — log and continue
+      }
+
       // Prevent a buyer from placing a new order while they already have one in progress.
       // Uses correct field names (buyerUserId) and excludes expired orders.
       try {

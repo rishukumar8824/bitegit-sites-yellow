@@ -177,7 +177,32 @@ function createAdminControllers({
       if (!isValidOtp(otpCode)) {
         return res.status(401).json({ message: 'Invalid 2FA code format.' });
       }
-      // 2FA-ready structure: OTP verification provider can be plugged here.
+      // Real TOTP verification using otplib
+      let totpValid = false;
+      try {
+        const { totp } = require('otplib');
+        const secret = admin.twoFactor.secret;
+        if (!secret) {
+          console.error('[Admin 2FA] Admin has 2FA enabled but no secret stored — blocking login');
+          return res.status(500).json({ message: 'Two-factor authentication is misconfigured. Contact system administrator.' });
+        }
+        totpValid = totp.verify({ secret, encoding: 'base32', token: String(otpCode) });
+      } catch (totpErr) {
+        console.error('[Admin 2FA] TOTP verification error:', totpErr.message);
+        return res.status(500).json({ message: 'Two-factor authentication check failed. Try again.' });
+      }
+      if (!totpValid) {
+        await adminStore.writeLoginHistory({
+          adminId: admin.id,
+          email: loginEmail,
+          role: admin.role,
+          success: false,
+          reason: '2FA_FAILED',
+          ip,
+          userAgent
+        });
+        return res.status(401).json({ message: 'Invalid two-factor authentication code.' });
+      }
     }
 
     const session = await adminStore.createAdminSession(admin, { ip, userAgent });
