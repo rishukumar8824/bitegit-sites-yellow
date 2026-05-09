@@ -5104,7 +5104,7 @@ app.post('/api/support/chat', async (req, res) => {
       return res.status(400).json({ message: 'Message is required.' });
     }
     const ticketData = {
-      id: `tkt_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+      id: `tkt_${Date.now()}_${require('crypto').randomBytes(16).toString('hex')}`,
       userId: email || 'guest',
       subject: topic ? `[${topic}] ${String(message).slice(0, 60)}` : String(message).slice(0, 80),
       status: 'OPEN',
@@ -5151,6 +5151,20 @@ app.get('/api/support/ticket/:ticketId/messages', async (req, res) => {
       return res.status(503).json({ message: 'Support service unavailable' });
     }
     const ticket = await adminStore.getSupportTicket(String(ticketId).trim());
+
+    // Ownership check: if caller is a logged-in P2P user, verify the ticket belongs to them
+    try {
+      const p2pUser = await getP2PUserFromRequest(req);
+      if (p2pUser) {
+        const ticketOwner = String(ticket.userId || ticket.email || '').toLowerCase().trim();
+        const callerEmail = String(p2pUser.email || '').toLowerCase().trim();
+        const callerId = String(p2pUser.id || '').toLowerCase().trim();
+        if (ticketOwner && ticketOwner !== 'guest' && ticketOwner !== callerEmail && ticketOwner !== callerId) {
+          return res.status(403).json({ message: 'Access denied.' });
+        }
+      }
+    } catch (_) { /* guest user — ticket ID entropy is the protection */ }
+
     // Return messages array and current status
     return res.json({
       ticketId: ticket.id,
@@ -5184,6 +5198,19 @@ app.post('/api/support/ticket/:ticketId/user-reply', async (req, res) => {
       return res.status(503).json({ message: 'Support service unavailable' });
     }
     const ticket = await adminStore.getSupportTicket(String(ticketId).trim());
+
+    // Ownership check: if caller is a logged-in P2P user, verify the ticket belongs to them
+    try {
+      const p2pUser = await getP2PUserFromRequest(req);
+      if (p2pUser) {
+        const ticketOwner = String(ticket.userId || ticket.email || '').toLowerCase().trim();
+        const callerEmail = String(p2pUser.email || '').toLowerCase().trim();
+        const callerId = String(p2pUser.id || '').toLowerCase().trim();
+        if (ticketOwner && ticketOwner !== 'guest' && ticketOwner !== callerEmail && ticketOwner !== callerId) {
+          return res.status(403).json({ message: 'Access denied.' });
+        }
+      }
+    } catch (_) { /* guest user — ticket ID entropy is the protection */ }
     const newMsg = {
       id: `tmsg_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
       sender: 'user',
