@@ -635,8 +635,8 @@ async function loadKyc() {
     .map(
       (user) => `
       <tr>
-        <td class="admin-td font-mono text-xs">${user.userId}</td>
-        <td class="admin-td">${user.email || '-'}</td>
+        <td class="admin-td font-mono text-xs">${escapeHtml(user.userId)}</td>
+        <td class="admin-td">${escapeHtml(user.email || '-')}</td>
         <td class="admin-td font-mono">****</td>
         <td class="admin-td">${statusBadge(user.kycStatus)}</td>
         <td class="admin-td">${formatDate(user.updatedAt)}</td>
@@ -768,8 +768,8 @@ function renderUsersTable(users, merchantMap) {
       : `<span title="Offline" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#64748b44;margin-right:5px;vertical-align:middle;"></span>`;
     return `
     <tr class="user-row" data-profile-id="${user.userId}" style="cursor:pointer;transition:background 0.15s;" title="Click to view full profile">
-      <td class="admin-td" style="font-family:monospace;font-size:11px;color:var(--accent);">${user.userId}</td>
-      <td class="admin-td" style="font-weight:500;">${onlineDot}${user.email}</td>
+      <td class="admin-td" style="font-family:monospace;font-size:11px;color:var(--accent);">${escapeHtml(user.userId)}</td>
+      <td class="admin-td" style="font-weight:500;">${onlineDot}${escapeHtml(user.email||'-')}</td>
       <td class="admin-td">${statusBadge(user.role)}</td>
       <td class="admin-td">${statusBadge(user.status)}</td>
       <td class="admin-td">${statusBadge(user.kycStatus)}</td>
@@ -1554,11 +1554,11 @@ async function loadSupport() {
       <!-- Content -->
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:2px;">
-          <span style="font-size:13px;font-weight:700;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${userLabel}</span>
+          <span style="font-size:13px;font-weight:700;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(userLabel)}</span>
           <span style="font-size:10px;color:var(--text-2);flex-shrink:0;">${formatDate(ticket.updatedAt)}</span>
         </div>
-        <p style="font-size:11px;color:var(--text-2);margin:0 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ticket.subject || 'No Subject'}</p>
-        <p style="font-size:11px;color:var(--text-2);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.65;">${preview}</p>
+        <p style="font-size:11px;color:var(--text-2);margin:0 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(ticket.subject || 'No Subject')}</p>
+        <p style="font-size:11px;color:var(--text-2);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.65;">${escapeHtml(preview)}</p>
         <div style="display:flex;align-items:center;gap:5px;margin-top:4px;">
           ${statusBadge(ticket.status || 'OPEN')}
           ${ticket.priority ? `<span style="font-size:10px;color:${priorityColor};font-weight:600;">${ticket.priority}</span>` : ''}
@@ -1647,8 +1647,8 @@ async function renderTicketChat(ticketId, silent = false) {
                            border:1px solid ${isAdmin ? 'rgba(0,229,255,0.25)' : 'var(--border)'};
                            border-radius:${isAdmin ? '14px 14px 2px 14px' : '14px 14px 14px 2px'};
                            padding:9px 14px;">
-                <p style="font-size:11px;font-weight:700;margin:0 0 4px;color:${isAdmin ? 'var(--accent)' : 'var(--green)'};">${senderName}</p>
-                <p style="font-size:13px;color:var(--text-1);margin:0;white-space:pre-wrap;line-height:1.55;">${text}</p>
+                <p style="font-size:11px;font-weight:700;margin:0 0 4px;color:${isAdmin ? 'var(--accent)' : 'var(--green)'};">${escapeHtml(senderName)}</p>
+                <p style="font-size:13px;color:var(--text-1);margin:0;white-space:pre-wrap;line-height:1.55;">${escapeHtml(String(msg.text||''))}</p>
               </div>
               <span style="font-size:10px;color:var(--text-2);margin-top:4px;opacity:.55;">${formatDate(msg.createdAt)}</span>
             </div>`;
@@ -2715,11 +2715,11 @@ async function loadUpOverview() {
   const el = document.getElementById('upOverviewContent');
   el.innerHTML = `
     <div style="background:var(--bg-card);border-radius:10px;border:1px solid var(--border);padding:14px 16px;margin-bottom:10px;">
-      <div class="up-info-row"><span class="up-info-label">User ID</span><span class="up-info-value" style="font-family:monospace;color:var(--accent);font-size:11px;">${user.userId||'-'}</span></div>
-      <div class="up-info-row"><span class="up-info-label">Email</span><span class="up-info-value">${user.email||'-'}</span></div>
-      <div class="up-info-row"><span class="up-info-label">Full Name</span><span class="up-info-value">${user.fullName||'<span style="color:var(--text-2);">Not provided</span>'}</span></div>
-      <div class="up-info-row"><span class="up-info-label">Mobile</span><span class="up-info-value">${user.mobile||'<span style="color:var(--text-2);">Not provided</span>'}</span></div>
-      <div class="up-info-row"><span class="up-info-label">Address</span><span class="up-info-value" style="font-size:12px;">${user.address||'<span style="color:var(--text-2);">Not provided</span>'}</span></div>
+      <div class="up-info-row"><span class="up-info-label">User ID</span><span class="up-info-value" style="font-family:monospace;color:var(--accent);font-size:11px;">${escapeHtml(user.userId||'-')}</span></div>
+      <div class="up-info-row"><span class="up-info-label">Email</span><span class="up-info-value">${escapeHtml(user.email||'-')}</span></div>
+      <div class="up-info-row"><span class="up-info-label">Full Name</span><span class="up-info-value">${user.fullName ? escapeHtml(user.fullName) : '<span style="color:var(--text-2);">Not provided</span>'}</span></div>
+      <div class="up-info-row"><span class="up-info-label">Mobile</span><span class="up-info-value">${user.mobile ? escapeHtml(user.mobile) : '<span style="color:var(--text-2);">Not provided</span>'}</span></div>
+      <div class="up-info-row"><span class="up-info-label">Address</span><span class="up-info-value" style="font-size:12px;">${user.address ? escapeHtml(user.address) : '<span style="color:var(--text-2);">Not provided</span>'}</span></div>
       <div class="up-info-row"><span class="up-info-label">Country</span><span class="up-info-value">${user.country||'<span style="color:var(--text-2);">-</span>'}</span></div>
       <div class="up-info-row"><span class="up-info-label">Date of Birth</span><span class="up-info-value">${user.dob||'<span style="color:var(--text-2);">-</span>'}</span></div>
       <div class="up-info-row"><span class="up-info-label">Role</span><span class="up-info-value">${statusBadge(user.role||'USER')}</span></div>

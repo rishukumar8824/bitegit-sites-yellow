@@ -203,7 +203,7 @@ function applySecurityHardening(app) {
   // Scope global limiter to API endpoints to avoid throttling normal page/assets rendering.
   app.use('/api', limiters.global);
   app.use(['/auth/login', '/auth/register', '/api/p2p/login', '/api/admin/auth/login', '/api/admin/login'], limiters.login);
-  app.use(['/api/signup/send-code', '/api/signup/verify-code'], limiters.otp);
+  app.use(['/api/signup/send-code', '/api/signup/verify-code', '/api/p2p/forgot-password'], limiters.otp);
   app.use(['/api/withdrawals', '/api/admin/wallet/withdrawals'], limiters.withdrawal);
 
   return limiters;

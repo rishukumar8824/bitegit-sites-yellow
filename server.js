@@ -52,7 +52,8 @@ app.set('trust proxy', 1);
 const ADMIN_SEED_USERNAME = String(process.env.ADMIN_USERNAME || 'admin')
   .trim()
   .toLowerCase();
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'admin123').trim();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '').trim();
+if (!ADMIN_PASSWORD) { console.error('[FATAL] ADMIN_PASSWORD env var is not set. Set it in .env'); }
 const ADMIN_SEED_EMAIL = String(process.env.ADMIN_EMAIL || `${ADMIN_SEED_USERNAME || 'admin'}@admin.local`)
   .trim()
   .toLowerCase();
@@ -1187,8 +1188,8 @@ function getGeoInfo(ip) {
 }
 
 const loginAttemptLimiter = createIpAttemptLimiter({
-  maxAttempts: 100,
-  windowMs: 1 * 60 * 1000
+  maxAttempts: 5,
+  windowMs: 10 * 60 * 1000   // 5 attempts per 10 minutes
 });
 
 async function createSession() {
@@ -1272,7 +1273,10 @@ async function handleLegacyAdminLogin(req, res) {
     return res.status(503).json({ message: 'Admin service is initializing. Please try again.' });
   }
 
-  if (!isLegacyAdminIdentifier(identifier) || password !== ADMIN_PASSWORD) {
+  // Use timing-safe comparison to prevent timing attacks
+  const pwdMatch = ADMIN_PASSWORD.length > 0 &&
+    (() => { try { return crypto.timingSafeEqual(Buffer.from(password), Buffer.from(ADMIN_PASSWORD)); } catch(_) { return false; } })();
+  if (!isLegacyAdminIdentifier(identifier) || !pwdMatch) {
     return res.status(401).json({ message: 'Invalid login credentials.' });
   }
 
@@ -5292,7 +5296,11 @@ app.get('/auth-embed', (req, res) => {
   const qs = require('querystring');
   let html = fs.readFileSync(path.join(__dirname, 'public', 'auth.html'), 'utf8');
   // Pass through redirect param
-  const redirect = req.query.redirect || '/p2p-embed';
+  // Sanitize redirect to prevent open-redirect attacks (must be relative path only)
+  let redirect = String(req.query.redirect || '/p2p-embed').trim();
+  if (!redirect.startsWith('/') || redirect.startsWith('//') || /^\/[a-z]+:/i.test(redirect)) {
+    redirect = '/p2p-embed';
+  }
   html = html.replace('</head>',
     `<style>
       .auth-topbar, header.auth-topbar,
