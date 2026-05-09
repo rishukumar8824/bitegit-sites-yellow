@@ -8324,7 +8324,8 @@ window.deleteMobAd = async function(offerId) {
           '<button id="bfMaxBtn" style="background:transparent;border:none;color:#00b8d4;font-size:0.88rem;font-weight:700;padding:0;cursor:pointer;flex-shrink:0;font-family:Manrope,sans-serif;">Max</button>',
         '</div>',
         '<div id="bfLimitInfo" style="font-size:0.78rem;color:rgba(255,255,255,0.38);margin-bottom:0.15rem;padding-left:2px;">Limit ₹-- - ₹--</div>',
-        '<div id="bfUsdtCalc" style="font-size:0.78rem;color:rgba(255,255,255,0.38);margin-bottom:1.1rem;padding-left:2px;">≈ -- USDT</div>',
+        '<div id="bfUsdtCalc" style="font-size:0.78rem;color:rgba(255,255,255,0.38);margin-bottom:0.15rem;padding-left:2px;">≈ -- USDT</div>',
+        '<div id="bfSellerBal" style="font-size:0.78rem;color:rgba(255,255,255,0.38);margin-bottom:1.1rem;padding-left:2px;">Available: -- USDT</div>',
         // Payment method
         '<div style="background:#1a1a1a;border-radius:10px;padding:0.82rem 1rem;display:flex;align-items:center;gap:0.65rem;margin-bottom:1.2rem;">',
           '<span id="bfPayMethodDot" style="width:10px;height:10px;border-radius:2px;background:#00b8d4;flex-shrink:0;"></span>',
@@ -8696,6 +8697,18 @@ window.deleteMobAd = async function(offerId) {
     var pm = document.getElementById('bfPayMethod');
     if (pm) pm.innerHTML = getOfferPayments(offer).map(function(m) { return '<option value="' + esc(m) + '">' + esc(m) + '</option>'; }).join('');
     el = document.getElementById('bfBuyHint'); if (el) el.textContent = '';
+    // Show seller's available balance
+    var selBal = Number(offer.sellerAvailableBalance || offer.availableAmount || offer.available || 0);
+    el = document.getElementById('bfSellerBal');
+    if (el) {
+      if (selBal <= 0) {
+        el.textContent = 'Available: Insufficient balance';
+        el.style.color = '#f6465d';
+      } else {
+        el.textContent = 'Available: ' + selBal.toFixed(2) + ' USDT';
+        el.style.color = 'rgba(255,255,255,0.38)';
+      }
+    }
     bfSetTabMode(false);
     bfShow('bfBuyScreen');
     var pi = document.getElementById('bfPayInput');
@@ -8853,6 +8866,13 @@ window.deleteMobAd = async function(offerId) {
       if (!payAmt || payAmt < min || payAmt > max) {
         if (_bfCryptoMode) { var minU = _bfOffer.price > 0 ? (min/_bfOffer.price) : 0; var maxU = _bfOffer.price > 0 ? (max/_bfOffer.price) : 0; if (hint) hint.textContent = 'Enter amount between ' + minU.toFixed(2) + ' - ' + maxU.toFixed(2) + ' USDT'; }
         else { if (hint) hint.textContent = 'Enter amount between ₹' + fmt(min) + ' and ₹' + fmt(max); }
+        return;
+      }
+      // Check seller has enough balance
+      var sellerBal = Number(_bfOffer.sellerAvailableBalance || _bfOffer.availableAmount || _bfOffer.available || 0);
+      var neededUsdt = _bfOffer.price > 0 ? payAmt / _bfOffer.price : 0;
+      if (sellerBal <= 0 || neededUsdt > sellerBal) {
+        if (hint) hint.textContent = 'Insufficient balance with seller. Try a lower amount.';
         return;
       }
       if (hint) hint.textContent = '';

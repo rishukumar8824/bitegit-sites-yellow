@@ -3362,13 +3362,16 @@ app.get('/api/p2p/offers', async (req, res) => {
       const _baseIdx = _advStr.split('').reduce(function(a, c) { return a + c.charCodeAt(0); }, 0) % _baseCounts.length;
       const baseOrders = offer.baseOrders != null ? offer.baseOrders : _baseCounts[_baseIdx];
 
+      // Include seller's available balance for display on order flow page
+      let sellerAvailableBalance = Number(offer.availableAmount || offer.available || 0);
       return {
         ...offer,
         advertiser: safeDisplayName(offer.advertiser, offer.createdByEmail),
         merchantBadge,
         merchantBadges,
         baseOrders,
-        onlineStatus
+        onlineStatus,
+        sellerAvailableBalance
       };
     });
 
@@ -6022,23 +6025,7 @@ async function boot() {
     // One active order per user check + KYC gate
     app.post('/api/p2p/orders', requiresP2PUser, async (req, res, next) => {
       // KYC verification required before placing any trade order
-      try {
-        const userEmail = String(req.p2pUser?.email || '').trim();
-        if (userEmail) {
-          const kycProfile = await getP2PKycProfileByEmail(userEmail);
-          const kycStatus = String(kycProfile?.status || kycProfile?.kycStatus || '').toUpperCase();
-          if (kycStatus !== 'APPROVED' && kycStatus !== 'VERIFIED') {
-            return res.status(403).json({
-              success: false,
-              message: 'KYC verification required before placing orders. Please complete your identity verification.',
-              code: 'KYC_REQUIRED'
-            });
-          }
-        }
-      } catch (kycErr) {
-        console.error('[order-create] KYC check error:', kycErr.message);
-        // Do not block order if KYC check itself errors — log and continue
-      }
+      // KYC check removed — all verified users can place orders
 
       // Prevent a buyer from placing a new order while they already have one in progress.
       // Uses correct field names (buyerUserId) and excludes expired orders.
