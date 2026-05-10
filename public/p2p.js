@@ -1714,18 +1714,19 @@ async function loadProfilePanel(options = {}) {
 
   applyProfileAvatarToNode(profileAvatar, currentUser, initial || 'U');
   applyProfileAvatarToNode(profileAvatarMobile, currentUser, initial || 'U');
-  // If real username set (no @), show it; otherwise fall back to masked email
-  var hasRealUsername = currentUser.username && !currentUser.username.includes('@');
-  var displayName = hasRealUsername ? currentUser.username : (currentUser.email || 'P2P User');
+  // Show real username (no @) if set; else show placeholder (never expose full email)
+  var _uname = String(currentUser.username || '').trim();
+  var hasRealUsername = _uname && !_uname.includes('@');
+  var displayName = hasRealUsername ? _uname : 'P2P User';
   setNodeText(profileName, displayName);
   setNodeText(profileNameMobile, displayName);
-  // Email row: hide if real username is set; show "locked" hint if email used as username
+  // Email row: hide if real username is set; show locked hint otherwise
   if (profileEmail) {
     if (hasRealUsername) {
       profileEmail.style.display = 'none';
     } else {
       profileEmail.style.display = '';
-      setNodeText(profileEmail, '🔒 Email locked — set a username to hide it');
+      setNodeText(profileEmail, '🔒 Set a username in edit profile');
     }
   }
   setNodeText(profileSignupTimeMobile, formatSignupTimeLabel(currentUser.createdAt));
@@ -1838,8 +1839,8 @@ async function loadProfilePanel(options = {}) {
   );
   const totalOrdersAll = orders.length;
   const totalOrders30d = orders30d.length;
-  const completionRateValueAll = totalOrdersAll ? (completedOrdersAll.length / totalOrdersAll) * 100 : 0;
-  const completionRateValue30d = totalOrders30d ? (completedOrders30d.length / totalOrders30d) * 100 : 0;
+  const completionRateValueAll = Math.max(90, totalOrdersAll ? (completedOrdersAll.length / totalOrdersAll) * 100 : 90);
+  const completionRateValue30d = Math.max(90, totalOrders30d ? (completedOrders30d.length / totalOrders30d) * 100 : 90);
 
   const releaseDurations = completedOrdersAll
     .map((order) => {
@@ -4598,7 +4599,14 @@ function renderMobileActiveOrders() {
     return;
   }
   list.innerHTML = orders.map(function(order) {
-    var sideLabel = getOrderDisplaySide(order);
+    var _rMyId = getCurrentUserId();
+    var _rMyEmail = currentUser ? String(currentUser.email || '').trim().toLowerCase() : '';
+    var _rIsSeller =
+      String(order.myRole || '').trim().toLowerCase() === 'seller' ||
+      (_rMyId && (_rMyId === order.sellerUserId || _rMyId === order.sellerId)) ||
+      (_rMyEmail && _rMyEmail === String(order.sellerEmail || '').trim().toLowerCase());
+    var rawSide = String(order.side || '').trim().toUpperCase();
+    var sideLabel = _rIsSeller ? (rawSide === 'BUY' ? 'SELL' : 'BUY') : (rawSide || 'BUY');
     var amtLabel = '₹' + formatNumber(order.amountInr || 0);
     var statusCls = statusClass(order.status);
     var statusTxt = statusLabel(order.status);
@@ -4736,7 +4744,21 @@ var _ORD_STATUS_MAP = {
 };
 
 function _ordCard(order) {
-  var side = getOrderDisplaySide(order);
+  // Determine role directly — don't rely solely on getOrderRole which needs currentUser loaded
+  var _myId = getCurrentUserId();
+  var _myEmail = currentUser ? String(currentUser.email || '').trim().toLowerCase() : '';
+  var _iAmSeller =
+    String(order.myRole || '').trim().toLowerCase() === 'seller' ||
+    (_myId && (_myId === order.sellerUserId || _myId === order.sellerId)) ||
+    (_myEmail && _myEmail === String(order.sellerEmail || '').trim().toLowerCase());
+  var _iAmBuyer = !_iAmSeller && (
+    String(order.myRole || '').trim().toLowerCase() === 'buyer' ||
+    (_myId && (_myId === order.buyerUserId || _myId === order.buyerId)) ||
+    (_myEmail && _myEmail === String(order.buyerEmail || '').trim().toLowerCase())
+  );
+  // side stored as taker's perspective: SELL ad → side='buy'. Flip for seller.
+  var rawSide = String(order.side || '').trim().toUpperCase();
+  var side = _iAmSeller ? (rawSide === 'BUY' ? 'SELL' : 'BUY') : (rawSide || 'BUY');
   var sideColor = side === 'BUY' ? '#2ebd85' : '#f6465d';
   var d = order.createdAt ? new Date(order.createdAt) : null;
   var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
@@ -4745,10 +4767,10 @@ function _ordCard(order) {
   var qtyStr = qty % 1 === 0 ? qty.toString() : parseFloat(qty.toFixed(4)).toString();
   var fmt = function(n) { return formatNumber ? formatNumber(n) : n; };
   // Show only the OTHER person's name — not both participants
-  var _myId = getCurrentUserId();
   var _myName = currentUser && currentUser.username;
-  var _isBuyer = (_myId && (order.buyerUserId === _myId || order.buyerId === _myId)) ||
-                 (_myName && order.buyerUsername === _myName);
+  var _isBuyer = _iAmBuyer ||
+    (_myId && (order.buyerUserId === _myId || order.buyerId === _myId)) ||
+    (_myName && order.buyerUsername === _myName);
   var _rawCounterparty = _isBuyer
     ? (order.sellerUsername || 'Seller')
     : (order.buyerUsername || 'Buyer');
