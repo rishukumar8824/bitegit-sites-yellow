@@ -1714,9 +1714,20 @@ async function loadProfilePanel(options = {}) {
 
   applyProfileAvatarToNode(profileAvatar, currentUser, initial || 'U');
   applyProfileAvatarToNode(profileAvatarMobile, currentUser, initial || 'U');
-  setNodeText(profileName, currentUser.username || 'P2P User');
-  setNodeText(profileNameMobile, currentUser.username || 'P2P User');
-  setNodeText(profileEmail, currentUser.email || '--');
+  // If real username set (no @), show it; otherwise fall back to masked email
+  var hasRealUsername = currentUser.username && !currentUser.username.includes('@');
+  var displayName = hasRealUsername ? currentUser.username : (currentUser.email || 'P2P User');
+  setNodeText(profileName, displayName);
+  setNodeText(profileNameMobile, displayName);
+  // Email row: hide if real username is set; show "locked" hint if email used as username
+  if (profileEmail) {
+    if (hasRealUsername) {
+      profileEmail.style.display = 'none';
+    } else {
+      profileEmail.style.display = '';
+      setNodeText(profileEmail, '🔒 Email locked — set a username to hide it');
+    }
+  }
   setNodeText(profileSignupTimeMobile, formatSignupTimeLabel(currentUser.createdAt));
   const currentKycStatus = normalizeKycStatus(currentUser?.kyc?.status);
   const isKycVerified = currentKycStatus === 'VERIFIED';
@@ -2701,20 +2712,19 @@ function getOrderRole(order) {
   if (!order || !currentUser) {
     return '';
   }
+  // Server-resolved role is most reliable — use it first
+  var serverRole = String(order.myRole || '').trim().toLowerCase();
+  if (serverRole === 'seller' || serverRole === 'buyer') return serverRole;
 
   var currentUserId = getCurrentUserId();
-  if (currentUserId && currentUserId === order.buyerUserId) {
-    return 'buyer';
-  }
-  if (currentUserId && currentUserId === order.sellerUserId) {
-    return 'seller';
-  }
-  if (currentUser.username && currentUser.username === order.buyerUsername) {
-    return 'buyer';
-  }
-  if (currentUser.username && currentUser.username === order.sellerUsername) {
-    return 'seller';
-  }
+  var currentEmail = String(currentUser.email || '').trim().toLowerCase();
+  if (currentUserId && currentUserId === order.buyerUserId) return 'buyer';
+  if (currentUserId && currentUserId === order.sellerUserId) return 'seller';
+  if (currentUser.username && currentUser.username === order.buyerUsername) return 'buyer';
+  if (currentUser.username && currentUser.username === order.sellerUsername) return 'seller';
+  // Email fallback — handles cases where id/username matching fails
+  if (currentEmail && currentEmail === String(order.buyerEmail || '').trim().toLowerCase()) return 'buyer';
+  if (currentEmail && currentEmail === String(order.sellerEmail || '').trim().toLowerCase()) return 'seller';
   return '';
 }
 
