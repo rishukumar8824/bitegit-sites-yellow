@@ -201,9 +201,47 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
 
       const owner = resolveOfferOwner(offer);
       const buyer = adType === 'SELL' ? req.p2pUser : owner;
-      const seller = adType === 'SELL' ? owner : req.p2pUser;
+      let seller = adType === 'SELL' ? owner : req.p2pUser;
 
-      if (String(buyer.id || '').trim() === String(seller.id || '').trim()) {
+      // Enrich seller email/username from DB when admin JWT provides no email claim
+      // (admin tokens have no email field → seller.email is '' → all participant checks break)
+      if ((!seller.email || !seller.username || seller.username === 'admin') && seller.id) {
+        try {
+          const sellerCred = typeof repos.getP2PCredentialByUserId === 'function'
+            ? await repos.getP2PCredentialByUserId(seller.id)
+            : null;
+          if (sellerCred) {
+            seller = {
+              ...seller,
+              email: seller.email || sellerCred.email || '',
+              username: (seller.username && seller.username !== 'admin')
+                ? seller.username
+                : (sellerCred.username || sellerCred.email || seller.username || '')
+            };
+          }
+        } catch (_) {}
+      }
+
+      // Same enrichment for buyer (defensive — usually buyer is req.p2pUser with full info)
+      let buyerObj = buyer;
+      if ((!buyerObj.email || !buyerObj.username || buyerObj.username === 'admin') && buyerObj.id) {
+        try {
+          const buyerCred = typeof repos.getP2PCredentialByUserId === 'function'
+            ? await repos.getP2PCredentialByUserId(buyerObj.id)
+            : null;
+          if (buyerCred) {
+            buyerObj = {
+              ...buyerObj,
+              email: buyerObj.email || buyerCred.email || '',
+              username: (buyerObj.username && buyerObj.username !== 'admin')
+                ? buyerObj.username
+                : (buyerCred.username || buyerCred.email || buyerObj.username || '')
+            };
+          }
+        } catch (_) {}
+      }
+
+      if (String(buyerObj.id || '').trim() === String(seller.id || '').trim()) {
         return res.status(400).json({ success: false, message: 'Buyer and seller cannot be same account.' });
       }
 
@@ -239,11 +277,11 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
         reference: createOrderReference(),
         adId,
         type: adType,
-        buyerId: buyer.id,
+        buyerId: buyerObj.id,
         sellerId: seller.id,
-        buyerUsername: safeDisplayName(buyer.username, buyer.email),
+        buyerUsername: safeDisplayName(buyerObj.username, buyerObj.email),
         sellerUsername: safeDisplayName(seller.username, seller.email),
-        buyerEmail: buyer.email || '',
+        buyerEmail: buyerObj.email || '',
         sellerEmail: seller.email || '',
         side: adType === 'SELL' ? 'buy' : 'sell',
         asset: offer.asset || 'USDT',
@@ -253,16 +291,16 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
         fiatAmount,
         expiresAt: now + effectiveTtlMs,
         participants: buildOrderParticipants({
-          buyerId: buyer.id,
-          buyerUsername: safeDisplayName(buyer.username, buyer.email),
-          buyerEmail: buyer.email || '',
+          buyerId: buyerObj.id,
+          buyerUsername: safeDisplayName(buyerObj.username, buyerObj.email),
+          buyerEmail: buyerObj.email || '',
           sellerId: seller.id,
           sellerUsername: safeDisplayName(seller.username, seller.email),
           sellerEmail: seller.email || ''
         }),
         messages: buildOrderCreatedMessages({
           now,
-          buyerUsername: safeDisplayName(buyer.username, buyer.email),
+          buyerUsername: safeDisplayName(buyerObj.username, buyerObj.email),
           sellerUsername: safeDisplayName(seller.username, seller.email),
           payWindowMinutes,
           sellerTerms: offer.remark || '',
@@ -276,7 +314,7 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
 
       const orderPayload = { orderId: savedOrder.id, status: savedOrder.status };
       _broadcast(String(seller.id || ''), 'new_order', orderPayload);
-      _broadcast(String(buyer.id || ''), 'new_order', orderPayload);
+      _broadcast(String(buyerObj.id || ''), 'new_order', orderPayload);
 
       // Send order confirmation emails to buyer and seller
       if (_email) {
@@ -288,22 +326,22 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
           fiatCurrency: savedOrder.fiatCurrency || 'INR',
           createdAt: savedOrder.createdAt
         };
-        if (buyer.email) {
-          _email.sendOrderConfirmation(buyer.email, emailOrder).catch(() => {});
+        if (buyerObj.email) {
+          _email.sendOrderConfirmation(buyerObj.email, emailOrder).catch(() => {});
         }
         if (seller.email) {
           _email.sendOrderUpdate(seller.email, emailOrder, 'new_order_seller').catch(() => {});
         }
         // 5-minute payment reminder to buyer
         const reminderDelay = Math.max((orderTtlMs || 15 * 60 * 1000) - 5 * 60 * 1000, 60 * 1000);
-        if (buyer.email) {
+        if (buyerObj.email) {
           setTimeout(() => {
-            _email.sendPaymentReminderEmail(buyer.email, emailOrder).catch(() => {});
+            _email.sendPaymentReminderEmail(buyerObj.email, emailOrder).catch(() => {});
           }, reminderDelay);
         }
       }
 
-      const myRole = String(req.p2pUser.id || '') === String(buyer.id || '') ? 'buyer' : 'seller';
+      const myRole = String(req.p2pUser.id || '') === String(buyerObj.id || '') ? 'buyer' : 'seller';
       // Strip MongoDB _id to avoid ObjectId serialization issues in res.json()
       const { _id: _omit, ...cleanOrder } = savedOrder;
       return res.status(201).json({

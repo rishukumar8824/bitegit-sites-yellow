@@ -1572,15 +1572,47 @@ async function requiresP2PUser(req, res, next) {
     };
     req.p2pUser = user;
 
-    // Update lastActiveAt in p2pCredentials (fire-and-forget, non-blocking)
-    if (user.email) {
+    // Enrich p2pUser with credential data for cross-identity matching.
+    // Needed because admin JWT (adm_...) and session (usr_...) are different IDs
+    // for the same physical user. Orders created via admin JWT store sellerUserId=adm_...
+    // but when the user views via session their id=usr_... doesn't match.
+    // We look up the credential by email OR by userId and attach alternateIds so that
+    // isParticipant() can cross-check both identities.
+    try {
       const cols = getCollections();
       if (cols && cols.p2pCredentials) {
-        cols.p2pCredentials.updateOne(
-          { email: user.email },
-          { $set: { lastActiveAt: new Date() } }
-        ).catch(() => {});
+        let cred = null;
+        if (user.email) {
+          // Primary lookup by email
+          cred = await cols.p2pCredentials.findOne(
+            { email: user.email },
+            { projection: { userId: 1, email: 1, username: 1 } }
+          );
+          // Fire-and-forget lastActiveAt update
+          cols.p2pCredentials.updateOne(
+            { email: user.email },
+            { $set: { lastActiveAt: new Date() } }
+          ).catch(() => {});
+        }
+        if (!cred && user.id) {
+          // Fallback lookup by userId (for admin JWT users whose email may be empty)
+          cred = await cols.p2pCredentials.findOne(
+            { userId: user.id },
+            { projection: { userId: 1, email: 1, username: 1 } }
+          );
+        }
+        if (cred) {
+          // Attach credential info so isParticipant / resolveMyRole can use the real email
+          if (!req.p2pUser.email && cred.email) req.p2pUser.email = cred.email;
+          if (!req.p2pUser.username && cred.username) req.p2pUser.username = cred.username;
+          // Attach alternate userId from credential (may differ from JWT sub)
+          if (cred.userId && cred.userId !== req.p2pUser.id) {
+            req.p2pUser.altId = cred.userId;
+          }
+        }
       }
+    } catch (_) {
+      // Non-fatal — proceed without enrichment
     }
 
     return next();
@@ -1664,6 +1696,13 @@ function isParticipant(order, userId, p2pUser) {
   // Check direct userId fields
   if ([order.sellerUserId, order.buyerUserId, order.sellerId, order.buyerId].includes(userId)) return true;
 
+  // Check alternate identity (admin JWT id ↔ session id cross-reference)
+  const altId = String((p2pUser && p2pUser.altId) || '').trim();
+  if (altId) {
+    if (Array.isArray(order.participants) && order.participants.some((p) => p.id === altId)) return true;
+    if ([order.sellerUserId, order.buyerUserId, order.sellerId, order.buyerId].includes(altId)) return true;
+  }
+
   // Fallback: match by username or email for legacy orders that may have stored differently
   if (p2pUser) {
     const myUsername = String(p2pUser.username || '').trim().toLowerCase();
@@ -1681,18 +1720,24 @@ function isParticipant(order, userId, p2pUser) {
 
 function resolveMyRole(order, p2pUser) {
   const myId = String(p2pUser?.id || '').trim();
+  const myAltId = String(p2pUser?.altId || '').trim(); // cross-identity: adm_... ↔ usr_...
   const myName = String(p2pUser?.username || '').trim().toLowerCase();
   const myEmail = String(p2pUser?.email || '').trim().toLowerCase();
+
+  function matchesId(id) {
+    return id === myId || (myAltId && id === myAltId);
+  }
+
   const sellerMatches =
-    order.sellerUserId === myId ||
-    order.sellerId === myId ||
-    String(order.sellerUsername || '').trim().toLowerCase() === myName ||
-    String(order.sellerEmail || '').trim().toLowerCase() === myEmail ||
+    matchesId(order.sellerUserId) ||
+    matchesId(order.sellerId) ||
+    (myName && String(order.sellerUsername || '').trim().toLowerCase() === myName) ||
+    (myEmail && String(order.sellerEmail || '').trim().toLowerCase() === myEmail) ||
     (Array.isArray(order.participants) && order.participants.some(
       (p) => p.role === 'seller' && (
-        p.id === myId ||
-        String(p.username || '').trim().toLowerCase() === myName ||
-        String(p.email || '').trim().toLowerCase() === myEmail
+        matchesId(p.id) ||
+        (myName && String(p.username || '').trim().toLowerCase() === myName) ||
+        (myEmail && String(p.email || '').trim().toLowerCase() === myEmail)
       )
     ));
   if (sellerMatches) {
@@ -1700,15 +1745,15 @@ function resolveMyRole(order, p2pUser) {
   }
 
   const buyerMatches =
-    order.buyerUserId === myId ||
-    order.buyerId === myId ||
-    String(order.buyerUsername || '').trim().toLowerCase() === myName ||
-    String(order.buyerEmail || '').trim().toLowerCase() === myEmail ||
+    matchesId(order.buyerUserId) ||
+    matchesId(order.buyerId) ||
+    (myName && String(order.buyerUsername || '').trim().toLowerCase() === myName) ||
+    (myEmail && String(order.buyerEmail || '').trim().toLowerCase() === myEmail) ||
     (Array.isArray(order.participants) && order.participants.some(
       (p) => p.role === 'buyer' && (
-        p.id === myId ||
-        String(p.username || '').trim().toLowerCase() === myName ||
-        String(p.email || '').trim().toLowerCase() === myEmail
+        matchesId(p.id) ||
+        (myName && String(p.username || '').trim().toLowerCase() === myName) ||
+        (myEmail && String(p.email || '').trim().toLowerCase() === myEmail)
       )
     ));
 
