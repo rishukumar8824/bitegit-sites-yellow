@@ -1602,9 +1602,13 @@ async function requiresP2PUser(req, res, next) {
           );
         }
         if (cred) {
-          // Attach credential info so isParticipant / resolveMyRole can use the real email
+          // Always use fresh email/username from DB — session may have stale values
+          // (e.g. user updated username in profile after logging in)
           if (!req.p2pUser.email && cred.email) req.p2pUser.email = cred.email;
-          if (!req.p2pUser.username && cred.username) req.p2pUser.username = cred.username;
+          // Always prefer DB username if it exists and is a real username (not email-shaped)
+          if (cred.username && !cred.username.includes('@')) {
+            req.p2pUser.username = cred.username;
+          }
           // Attach alternate userId from credential (may differ from JWT sub)
           if (cred.userId && cred.userId !== req.p2pUser.id) {
             req.p2pUser.altId = cred.userId;
@@ -2213,14 +2217,34 @@ app.get('/api/p2p/me', async (req, res) => {
     return res.json({ loggedIn: false, user: null });
   }
 
-  const kycProfile = await getP2PKycProfileByEmail(user.email);
+  // Always fetch fresh credential from DB so profile username/email is up-to-date
+  // (session token may have stale username if user updated profile after login)
+  let freshUsername = user.username;
+  let freshEmail = user.email;
+  try {
+    const cols = getCollections();
+    if (cols && cols.p2pCredentials) {
+      const cred = await cols.p2pCredentials.findOne(
+        user.email
+          ? { email: user.email }
+          : { userId: user.id },
+        { projection: { username: 1, email: 1 } }
+      );
+      if (cred) {
+        if (cred.username && !cred.username.includes('@')) freshUsername = cred.username;
+        if (cred.email) freshEmail = cred.email;
+      }
+    }
+  } catch (_) {}
+
+  const kycProfile = await getP2PKycProfileByEmail(freshEmail);
 
   return res.json({
     loggedIn: true,
     user: {
       id: user.id,
-      username: user.username,
-      email: user.email,
+      username: freshUsername,
+      email: freshEmail,
       role: tokenService.normalizeRole(user.role || 'USER'),
       createdAt: user.createdAt || null,
       avatar: user.avatar || '',
