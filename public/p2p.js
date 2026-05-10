@@ -4751,6 +4751,7 @@ function _ordCard(order) {
     String(order.myRole || '').trim().toLowerCase() === 'seller' ||
     (_myId && (_myId === order.sellerUserId || _myId === order.sellerId)) ||
     (_myEmail && _myEmail === String(order.sellerEmail || '').trim().toLowerCase());
+  console.warn('[_ordCard] id='+order.id+' myRole='+order.myRole+' sellerUserId='+order.sellerUserId+' sellerEmail='+order.sellerEmail+' myId='+_myId+' myEmail='+_myEmail+' isSeller='+_iAmSeller);
   var _iAmBuyer = !_iAmSeller && (
     String(order.myRole || '').trim().toLowerCase() === 'buyer' ||
     (_myId && (_myId === order.buyerUserId || _myId === order.buyerId)) ||
@@ -5306,7 +5307,7 @@ function _ordFetchMyActive(fetchOpts, parentReqId) {
       if (!data || parentReqId !== _ordReqId) return null;
       var all = _ordExtractOrders(data);
       var active = _ordFilterActiveOrders(all);
-      console.log('[orders] my-active: total=' + all.length + ' active=' + active.length, all.map(function(o){return o.id+':'+o.status+':seller='+o.sellerUserId;}));
+      console.log('[orders] my-active: total=' + all.length + ' active=' + active.length, all.map(function(o){return o.id+':'+o.status+':seller='+o.sellerUserId+':myRole='+o.myRole+':sellerEmail='+o.sellerEmail;}));
       return {
         total: Number(data.total || 0),
         orders: active
