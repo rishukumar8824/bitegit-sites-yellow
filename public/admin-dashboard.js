@@ -1738,7 +1738,7 @@ async function openTicket(ticketId) {
     if (state.support.activeTicketId === ticketId && state.currentView === 'support') {
       await renderTicketChat(ticketId, true);
     }
-  }, 10000);
+  }, 3500);
 }
 
 async function renderTicketChat(ticketId, silent = false) {
@@ -3844,8 +3844,18 @@ function connectSupportSSE() {
         const p2pBadge = document.getElementById('p2pDisputeBadge');
         if (p2pBadge) { p2pBadge.style.display = ''; p2pBadge.textContent = (parseInt(p2pBadge.textContent || '0') || 0) + 1; }
         if (state.currentView === 'p2p') { loadP2P().catch(() => {}); }
+      } else if (info && info.type === 'user_reply') {
+        // User sent a reply on existing ticket — refresh active chat immediately
+        showSupportNotification(info);
+        if (state.currentView === 'support') {
+          if (state.support.activeTicketId === info.ticketId) {
+            renderTicketChat(info.ticketId, true).catch(() => {});
+          } else {
+            loadSupport().catch(() => {});
+          }
+        }
       } else {
-        // Support ticket
+        // New support ticket
         _lastKnownOpenTicketCount++;
         const badge = document.getElementById('supportBadge');
         if (badge) { badge.style.display = ''; badge.textContent = _lastKnownOpenTicketCount; }
@@ -4305,7 +4315,7 @@ function _wdRenderRows(withdrawals) {
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Username:</span> <span style="color:#c9d1d9;">${userName}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Email:</span> <span style="color:#00e5ff;">${userEmail !== '-' ? userEmail : '<span style="color:#848e9c;">-</span>'}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Network:</span> ${escapeHtml(w.network || '-')}</div>
-          <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;vertical-align:top;">Address:</span><input id="wdAddr_${detailId}" value="${escapeHtml(address)}" style="background:#161b22;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#eaecef;font-size:11px;padding:3px 7px;width:calc(100% - 96px);word-break:break-all;"></div>
+          <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;vertical-align:top;">Address:</span><input id="wdAddr_${detailId}" value="${escapeHtml(address)}" style="background:#161b22;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#eaecef;font-size:11px;padding:3px 7px;width:calc(100% - 96px);"></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Fee:</span> ${escapeHtml(fee)} USDT</div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Request ID:</span> <span style="font-size:10px;word-break:break-all;">${escapeHtml(id || '-')}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Submitted:</span> ${escapeHtml(createdAt)}</div>
@@ -4396,7 +4406,7 @@ async function openWithdrawalPanel() {
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Username:</span> <b style="color:#eaecef;">${userName}</b></div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Email:</span> ${userEmail}</div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Network:</span> ${escapeHtml(w.network || '-')}</div>
-            <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;vertical-align:top;">Address:</span><input id="wdAddr_${detailId}" value="${escapeHtml(address)}" style="background:#161b22;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#eaecef;font-size:11px;padding:3px 7px;width:calc(100% - 96px);word-break:break-all;"></div>
+            <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;vertical-align:top;">Address:</span><input id="wdAddr_${detailId}" value="${escapeHtml(address)}" style="background:#161b22;border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:#eaecef;font-size:11px;padding:3px 7px;width:calc(100% - 96px);"></div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Fee:</span> ${escapeHtml(fee)} USDT</div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Request ID:</span> <span style="font-size:10px;word-break:break-all;">${escapeHtml(id || '-')}</span></div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Submitted:</span> ${escapeHtml(createdAt)}</div>
@@ -4644,19 +4654,40 @@ async function loadEmailInbox() {
     if (dot) { dot.textContent = unread; dot.style.display = unread > 0 ? 'inline-flex' : 'none'; }
     if (badge) { badge.textContent = unread; badge.style.display = unread > 0 ? '' : 'none'; }
     if (msgs.length === 0) {
-      listEl.innerHTML = '<div style="padding:32px 16px;text-align:center;color:rgba(255,255,255,0.3);font-size:13px;">No messages yet</div>';
+      listEl.innerHTML = '<div style="padding:40px 16px;text-align:center;"><div style="font-size:36px;margin-bottom:10px;">📭</div><div style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.5);">No messages yet</div><div style="font-size:11px;color:rgba(255,255,255,0.25);margin-top:4px;">New user messages will appear here</div></div>';
       return;
     }
-    listEl.innerHTML = msgs.map(m => `
-      <div onclick="openInboxMessage('${m._id}')" id="msgItem_${m._id}"
-        style="padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer;${!m.read ? 'border-left:3px solid #00b8d4;' : ''}"
-        onmouseover="this.style.background='rgba(255,255,255,0.04)'" onmouseout="this.style.background=''">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div style="font-size:12px;font-weight:${m.read ? '500' : '700'};color:${m.read ? 'rgba(255,255,255,0.6)' : '#fff'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${escapeHtml(m.userName || m.userEmail)}</div>
-          <div style="font-size:10px;color:rgba(255,255,255,0.3);">${formatDate(m.createdAt)}</div>
-        </div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(m.subject)}</div>
-      </div>`).join('');
+    listEl.innerHTML = (() => {
+      const _ac = ['#00b8d4','#02c076','#4263eb','#f6465d','#a855f7','#f59e0b','#10b981'];
+      return msgs.map(m => {
+        const isChat = m._type === 'chat';
+        const clickFn = isChat ? `openInboxChatTicket('${m._id}')` : `openInboxMessage('${m._id}')`;
+        const lbl = m.userName || m.userEmail || '?';
+        const ch = lbl[0].toUpperCase();
+        const ac = _ac[ch.charCodeAt(0) % _ac.length];
+        const sc = isChat ? (m.status === 'CLOSED' ? '#555' : m.status === 'IN_PROGRESS' ? '#00b8d4' : '#02c076') : '#00b8d4';
+        const sb = isChat
+          ? `<span style="font-size:9px;background:${sc}22;color:${sc};border-radius:4px;padding:1px 6px;flex-shrink:0;">${m.status||'OPEN'}</span>`
+          : `<span style="font-size:9px;background:#00b8d422;color:#00b8d4;border-radius:4px;padding:1px 6px;flex-shrink:0;">EMAIL</span>`;
+        const preview = escapeHtml((m.body||'').slice(0,55)+((m.body||'').length>55?'…':''));
+        const ti = isChat ? '💬' : '✉️';
+        const bg = !m.read ? 'rgba(0,184,212,0.03)' : '';
+        return `<div onclick="${clickFn}" id="msgItem_${m._id}"
+          style="padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer;display:flex;gap:10px;align-items:flex-start;${!m.read?'border-left:3px solid #00b8d4;background:'+bg+';':''}"
+          onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='${bg}'">
+          <div style="width:36px;height:36px;border-radius:50%;background:${ac}22;border:2px solid ${ac}55;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:${ac};flex-shrink:0;margin-top:1px;">${ch}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;">
+              <span style="font-size:12px;font-weight:${m.read?'500':'700'};color:${m.read?'rgba(255,255,255,0.65)':'#fff'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;">${ti} ${escapeHtml(lbl)}</span>
+              ${sb}
+              <span style="font-size:10px;color:rgba(255,255,255,0.28);flex-shrink:0;">${formatDate(m.createdAt||m.updatedAt)}</span>
+            </div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:${m.read?'400':'600'};">${escapeHtml(m.subject)}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.28);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;">${preview}</div>
+          </div>
+        </div>`;
+      }).join('');
+    })();
   } catch(e) {
     listEl.innerHTML = '<div style="padding:24px;text-align:center;color:#f6465d;font-size:13px;">Failed to load inbox.</div>';
   }
@@ -4705,6 +4736,18 @@ async function openInboxMessage(id) {
   } catch(e) {
     detailEl.innerHTML = '<div style="text-align:center;color:#f6465d;">Failed to load message.</div>';
   }
+}
+
+// Open a btx chat ticket from inbox (navigates to Support section)
+async function openInboxChatTicket(ticketId) {
+  try {
+    await fetch(`${API_BASE}/email/inbox/${ticketId}/read`, { method: 'PUT' }).catch(() => {});
+    const msgItem = document.getElementById('msgItem_' + ticketId);
+    if (msgItem) msgItem.style.borderLeft = '';
+    // Navigate to Support and open the ticket
+    await changeView('support');
+    setTimeout(() => { openTicket(ticketId); }, 500);
+  } catch(e) { /* ignore */ }
 }
 
 async function sendInboxReply(id) {
