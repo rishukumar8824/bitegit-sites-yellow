@@ -5411,17 +5411,31 @@ app.post('/api/email/inbound', async (req, res) => {
     const rawAttachments = Array.isArray(emailData.attachments) ? emailData.attachments : [];
     console.log('[inbound-email] raw attachments count:', rawAttachments.length);
     if (rawAttachments.length > 0) {
-      console.log('[inbound-email] first attachment keys:', Object.keys(rawAttachments[0]).join(','));
+      const a0 = rawAttachments[0];
+      console.log('[inbound-email] att[0] keys:', Object.keys(a0).join(','),
+        '| contentType:', a0.contentType||a0.mimeType||a0.type,
+        '| content type:', typeof a0.content,
+        '| isBuffer:', Buffer.isBuffer(a0.content),
+        '| size:', a0.size,
+        '| contentId:', a0.contentId||a0.content_id||a0.cid||'(none)',
+        '| content preview:', typeof a0.content === 'string' ? a0.content.slice(0,30) : (Buffer.isBuffer(a0.content) ? '[Buffer '+a0.content.length+']' : JSON.stringify(a0.content).slice(0,60))
+      );
     }
 
     const attachments = rawAttachments.map(att => {
       const filename    = String(att.filename || att.name || 'attachment');
       const contentType = String(att.contentType || att.mimeType || att.type || 'application/octet-stream');
       const contentId   = String(att.contentId || att.content_id || att.cid || '').replace(/[<>]/g, '');
-      // content can be base64 string or Buffer
+      // content can be: base64 string, Buffer, {type:'Buffer',data:[...]}, or URL string
       let content = '';
-      if (typeof att.content === 'string') content = att.content;
-      else if (Buffer.isBuffer(att.content)) content = att.content.toString('base64');
+      if (typeof att.content === 'string') {
+        content = att.content; // base64 or raw string
+      } else if (Buffer.isBuffer(att.content)) {
+        content = att.content.toString('base64');
+      } else if (att.content && typeof att.content === 'object' && Array.isArray(att.content.data)) {
+        // Serialized Buffer: {type:'Buffer', data:[...]}
+        content = Buffer.from(att.content.data).toString('base64');
+      }
       const inline = !!(att.inline || att.disposition === 'inline' || contentId);
       return { filename, contentType, content, contentId, inline, size: att.size || content.length };
     }).filter(a => a.content); // only keep if has content
