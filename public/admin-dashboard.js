@@ -4756,13 +4756,18 @@ async function openInboxMessage(id) {
       </div>
     </div>`).join('');
 
-  // Render attachments (images + files)
+  // Render attachments — separate inline (already embedded in HTML) from real file attachments
   const atts = Array.isArray(msg.attachments) ? msg.attachments : [];
-  const attHtml = atts.length ? `
+  // Only show non-inline attachments as separate tiles (inline images show inside email body)
+  const fileAtts = atts.filter(a => !a.inline && a.content);
+  // Also show any image attachments that are inline but not referenced in htmlBody (safety net)
+  const imgAtts  = atts.filter(a => /^image\//i.test(a.contentType||'') && a.content && !a.contentId);
+  const showAtts  = [...fileAtts, ...imgAtts];
+  const attHtml = showAtts.length ? `
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07);">
-      <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">📎 Attachments (${atts.length})</div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">📎 Attachments (${showAtts.length})</div>
       <div style="display:flex;flex-wrap:wrap;gap:10px;">
-        ${atts.map(a => {
+        ${showAtts.map(a => {
           const isImg = /^image\//i.test(a.contentType || '');
           const src = `data:${a.contentType};base64,${a.content}`;
           if (isImg) {
@@ -4782,12 +4787,25 @@ async function openInboxMessage(id) {
       </div>
     </div>` : '';
 
-  // Render HTML body safely in sandboxed iframe if available
-  const hasHtml = msg.htmlBody && msg.htmlBody.trim().length > 50;
-  const bodyContent = hasHtml
-    ? `<iframe sandbox="allow-same-origin" srcdoc="${escapeHtml(msg.htmlBody)}"
-         style="width:100%;border:none;border-radius:6px;min-height:200px;background:#fff;" onload="this.style.height=(this.contentDocument.body.scrollHeight+20)+'px'"></iframe>`
-    : `<div style="font-size:14px;color:rgba(255,255,255,0.85);white-space:pre-wrap;line-height:1.7;">${escapeHtml(msg.body || '(empty)')}</div>`;
+  // Render HTML body — if htmlBody exists, show in iframe (images already embedded via data URLs)
+  // Otherwise fall back to plain text. Never show "(empty)" if we have attachments to show.
+  const hasHtml = msg.htmlBody && msg.htmlBody.trim().length > 30;
+  const hasBody = msg.body && msg.body.trim().length > 0;
+  let bodyContent;
+  if (hasHtml) {
+    // Use a blob URL for the iframe so data: src images load correctly
+    bodyContent = `<div id="emailIframeWrap_${id}" style="width:100%;min-height:200px;border-radius:6px;overflow:hidden;background:#fff;">
+      <iframe id="emailIframe_${id}" sandbox="allow-same-origin allow-popups"
+        style="width:100%;border:none;min-height:200px;display:block;background:#fff;"
+        onload="(function(f){try{var h=f.contentDocument.body.scrollHeight;f.style.height=(h+24)+'px';}catch(e){}})(this)"></iframe>
+    </div>`;
+  } else if (hasBody) {
+    bodyContent = `<div style="font-size:14px;color:rgba(255,255,255,0.85);white-space:pre-wrap;line-height:1.7;">${escapeHtml(msg.body)}</div>`;
+  } else if (atts.some(a => /^image\//i.test(a.contentType||''))) {
+    bodyContent = `<div style="font-size:13px;color:rgba(255,255,255,0.4);font-style:italic;">(Image attached below)</div>`;
+  } else {
+    bodyContent = `<div style="font-size:13px;color:rgba(255,255,255,0.4);font-style:italic;">(No message body)</div>`;
+  }
 
   detailEl.innerHTML = `
     <div style="height:100%;display:flex;flex-direction:column;overflow:hidden;">
@@ -4825,6 +4843,23 @@ async function openInboxMessage(id) {
         </div>
       </div>
     </div>`;
+
+  // Inject HTML body into iframe via srcdoc property (not attribute) to avoid escaping issues
+  // This is needed to display Gmail inline images (data: URLs embedded in htmlBody by server)
+  if (hasHtml) {
+    try {
+      const iframeEl = document.getElementById('emailIframe_' + id);
+      if (iframeEl) {
+        iframeEl.srcdoc = msg.htmlBody;
+        iframeEl.onload = function() {
+          try {
+            const h = this.contentDocument.body ? this.contentDocument.body.scrollHeight : 300;
+            this.style.height = (h + 24) + 'px';
+          } catch(e) { this.style.height = '400px'; }
+        };
+      }
+    } catch(e) { /* ignore */ }
+  }
 }
 
 // Open a btx chat ticket from inbox (navigates to Support section)
