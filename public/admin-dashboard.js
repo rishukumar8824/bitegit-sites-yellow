@@ -4685,8 +4685,11 @@ async function loadEmailInbox() {
         const sb = isChat
           ? `<span style="font-size:9px;background:${sc}22;color:${sc};border-radius:4px;padding:1px 6px;flex-shrink:0;">${m.status||'OPEN'}</span>`
           : `<span style="font-size:9px;background:#00b8d422;color:#00b8d4;border-radius:4px;padding:1px 6px;flex-shrink:0;">EMAIL</span>`;
-        const preview = escapeHtml((m.body||'').slice(0,55)+((m.body||'').length>55?'…':''));
-        const ti = isChat ? '💬' : '✉️';
+        const hasImg = Array.isArray(m.attachments) && m.attachments.some(a => /^image\//i.test(a.contentType||''));
+        const rawPreview = (m.body||'').trim();
+        const preview = rawPreview ? escapeHtml(rawPreview.slice(0,55)+(rawPreview.length>55?'…':''))
+                      : (hasImg ? '📷 Photo' : (m.htmlBody ? '(HTML email)' : ''));
+        const ti = isChat ? '💬' : (hasImg ? '📷' : '✉️');
         const bg = !m.read ? 'rgba(0,184,212,0.03)' : '';
         return `<div onclick="${clickFn}" id="msgItem_${m._id}"
           style="padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer;display:flex;gap:10px;align-items:flex-start;${!m.read?'border-left:3px solid #00b8d4;background:'+bg+';':''}"
