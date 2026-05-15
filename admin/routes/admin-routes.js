@@ -185,6 +185,7 @@ function registerAdminRoutes(app, deps) {
   router.post('/wallet/deposits/:depositId/review', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'wallet', action: 'review_deposit' }, adminControllers.reviewDeposit));
   router.get('/wallet/withdrawals', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'wallet', action: 'list_withdrawals' }, adminControllers.listWithdrawals));
   router.post('/wallet/withdrawals/:withdrawalId/review', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'wallet', action: 'review_withdrawal' }, adminControllers.reviewWithdrawal));
+  router.patch('/wallet/withdrawals/:withdrawalId/address', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'wallet', action: 'patch_withdrawal_address' }, adminControllers.patchWithdrawalAddress));
   router.get('/wallet/config/:coin', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'wallet', action: 'get_coin_config' }, adminControllers.getCoinConfig));
   router.put('/wallet/config/:coin', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'wallet', action: 'set_coin_config' }, adminControllers.setCoinConfig));
   router.get('/wallet/hot-balances', protect(ROLE_GROUPS.FINANCE), withLogging({ module: 'wallet', action: 'hot_balances' }, adminControllers.listHotWallets));
