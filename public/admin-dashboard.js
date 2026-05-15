@@ -4442,21 +4442,16 @@ async function wdSaveAddress(withdrawalId, addrInputId, btn) {
   const newAddr = inp.value.trim();
   if (!newAddr) { showMessage('Address cannot be empty', 'error'); return; }
   const origText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '…';
+  btn.disabled = true; btn.textContent = '…';
   try {
     await apiRequest(`/wallet/withdrawals/${encodeURIComponent(withdrawalId)}/address`, {
-      method: 'PATCH',
-      body: JSON.stringify({ address: newAddr })
+      method: 'PATCH', body: JSON.stringify({ address: newAddr })
     });
     showMessage('Address updated successfully', 'success');
-    btn.style.background = '#02c076';
-    btn.style.color = '#fff';
-    btn.textContent = '✓ Saved';
+    btn.style.background = '#02c076'; btn.style.color = '#fff'; btn.textContent = '✓ Saved';
   } catch(e) {
     showMessage(e.message || 'Failed to update address', 'error');
-    btn.disabled = false;
-    btn.textContent = origText;
+    btn.disabled = false; btn.textContent = origText;
   }
 }
 
@@ -4492,10 +4487,30 @@ async function wdAction(withdrawalId, decision, btn, addrInputId) {
 let emailSearchTimeout = null;
 let emailSelectedUser = null;
 let emailTemplatesCache = [];
+let _emailInboxCache = [];       // cached messages — avoids re-fetch on open
+let _emailInboxInterval = null;  // auto-refresh timer
 
 async function loadEmailCenter() {
   switchEmailTab('send');
   await loadEmailTemplates();
+  // Start auto-refresh for inbox badge (every 30s)
+  if (_emailInboxInterval) clearInterval(_emailInboxInterval);
+  _emailInboxInterval = setInterval(async () => {
+    if (state.currentView !== 'email') { clearInterval(_emailInboxInterval); _emailInboxInterval = null; return; }
+    try {
+      const res = await fetch(`${API_BASE}/email/inbox`);
+      const data = await res.json();
+      _emailInboxCache = data.messages || [];
+      const unread = data.unreadCount || 0;
+      const badge = document.getElementById('emailInboxBadge');
+      const dot = document.getElementById('inboxUnreadDot');
+      if (badge) { badge.textContent = unread; badge.style.display = unread > 0 ? '' : 'none'; }
+      if (dot) { dot.textContent = unread; dot.style.display = unread > 0 ? 'inline-flex' : 'none'; }
+      // If inbox tab is open, refresh list
+      const inboxTab = document.getElementById('emailInboxTab');
+      if (inboxTab && inboxTab.style.display !== 'none') loadEmailInbox();
+    } catch(_) {}
+  }, 30000);
 }
 
 function switchEmailTab(tab) {
@@ -4646,6 +4661,7 @@ async function loadEmailInbox() {
     const res = await fetch(`${API_BASE}/email/inbox`);
     const data = await res.json();
     const msgs = data.messages || [];
+    _emailInboxCache = msgs; // populate cache
     const countEl = document.getElementById('inboxCountLabel');
     if (countEl) countEl.textContent = `(${msgs.length})`;
     const unread = data.unreadCount || 0;
@@ -4696,46 +4712,119 @@ async function loadEmailInbox() {
 async function openInboxMessage(id) {
   const detailEl = document.getElementById('emailInboxDetail');
   if (!detailEl) return;
-  detailEl.innerHTML = '<div style="text-align:center;color:rgba(255,255,255,0.3);font-size:13px;">Loading...</div>';
-  // Mark as read
-  try { await fetch(`${API_BASE}/email/inbox/${id}/read`, { method: 'PUT' }); } catch(e) {}
+  // Mark as read instantly (fire & forget)
+  fetch(`${API_BASE}/email/inbox/${id}/read`, { method: 'PUT' }).catch(() => {});
   const msgItem = document.getElementById('msgItem_' + id);
-  if (msgItem) { msgItem.style.borderLeft = ''; msgItem.querySelector('div > div')?.style && (msgItem.querySelectorAll('div > div')[0].style.fontWeight = '500'); }
-  try {
-    const res = await fetch(`${API_BASE}/email/inbox`);
-    const data = await res.json();
-    const msg = (data.messages || []).find(m => m._id === id);
-    if (!msg) { detailEl.innerHTML = '<div style="text-align:center;color:#f6465d;">Message not found.</div>'; return; }
-    const replies = (msg.replies || []).map(r => `
-      <div style="margin-top:12px;padding:12px;background:rgba(0,184,212,0.08);border-left:3px solid #00b8d4;border-radius:0 6px 6px 0;">
-        <div style="font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:4px;">Admin reply · ${formatDate(r.sentAt)}</div>
-        <div style="font-size:13px;color:#fff;white-space:pre-wrap;">${escapeHtml(r.body)}</div>
-      </div>`).join('');
-    detailEl.innerHTML = `
-      <div style="height:100%;display:flex;flex-direction:column;gap:14px;">
-        <div>
-          <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;">${escapeHtml(msg.subject)}</div>
-          <div style="font-size:12px;color:rgba(255,255,255,0.4);">From: ${escapeHtml(msg.userName || '')} &lt;${escapeHtml(msg.userEmail)}&gt; · ${formatDate(msg.createdAt)}</div>
-        </div>
-        <div style="flex:1;background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;">
-          <div style="font-size:14px;color:rgba(255,255,255,0.85);white-space:pre-wrap;line-height:1.6;">${escapeHtml(msg.body)}</div>
-          ${replies}
-        </div>
-        <div>
-          <textarea id="replyBody_${id}" rows="3" placeholder="Write reply to user..."
-            style="width:100%;box-sizing:border-box;background:#0d1117;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:9px 12px;color:#fff;font-size:13px;outline:none;resize:vertical;margin-bottom:8px;"></textarea>
-          <button onclick="sendInboxReply('${id}')" style="padding:8px 20px;background:#00b8d4;color:#fff;font-weight:700;font-size:13px;border:none;border-radius:8px;cursor:pointer;">Send Reply ↩</button>
-          <span id="replyStatus_${id}" style="margin-left:10px;font-size:12px;"></span>
-        </div>
-      </div>`;
-    const unread = data.unreadCount || 0;
-    const dot = document.getElementById('inboxUnreadDot');
-    const badge = document.getElementById('emailInboxBadge');
-    if (dot) { dot.textContent = unread; dot.style.display = unread > 0 ? 'inline-flex' : 'none'; }
-    if (badge) { badge.textContent = unread; badge.style.display = unread > 0 ? '' : 'none'; }
-  } catch(e) {
-    detailEl.innerHTML = '<div style="text-align:center;color:#f6465d;">Failed to load message.</div>';
+  if (msgItem) { msgItem.style.borderLeft = 'none'; msgItem.style.background = ''; }
+
+  // Use cache first (instant), else fetch
+  let msg = _emailInboxCache.find(m => String(m._id) === String(id));
+  if (!msg) {
+    detailEl.innerHTML = '<div style="padding:40px;text-align:center;color:rgba(255,255,255,0.3);font-size:13px;">Loading...</div>';
+    try {
+      const res = await fetch(`${API_BASE}/email/inbox`);
+      const data = await res.json();
+      _emailInboxCache = data.messages || [];
+      msg = _emailInboxCache.find(m => String(m._id) === String(id));
+    } catch(e) {}
   }
+  if (!msg) { detailEl.innerHTML = '<div style="padding:40px;text-align:center;color:#f6465d;">Message not found.</div>'; return; }
+
+  // Update unread badge from cache
+  const unread = _emailInboxCache.filter(m => !m.read).length;
+  const dot = document.getElementById('inboxUnreadDot');
+  const badge = document.getElementById('emailInboxBadge');
+  if (dot) { dot.textContent = unread; dot.style.display = unread > 0 ? 'inline-flex' : 'none'; }
+  if (badge) { badge.textContent = unread; badge.style.display = unread > 0 ? '' : 'none'; }
+
+  // Sender avatar letter + color
+  const _ac = ['#00b8d4','#02c076','#4263eb','#a855f7','#f59e0b'];
+  const senderName = msg.userName || msg.userEmail || '?';
+  const ch = senderName[0].toUpperCase();
+  const ac = _ac[ch.charCodeAt(0) % _ac.length];
+
+  // Render replies thread
+  const replies = (msg.replies || []).map(r => `
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <div style="width:32px;height:32px;border-radius:50%;background:rgba(0,184,212,0.2);border:2px solid #00b8d4;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#00b8d4;flex-shrink:0;">A</div>
+      <div style="flex:1;background:rgba(0,184,212,0.07);border:1px solid rgba(0,184,212,0.2);border-radius:0 10px 10px 10px;padding:10px 14px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-size:12px;font-weight:700;color:#00b8d4;">Admin</span>
+          <span style="font-size:11px;color:rgba(255,255,255,0.3);">${formatDate(r.sentAt)}</span>
+        </div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.88);white-space:pre-wrap;line-height:1.6;">${escapeHtml(r.body)}</div>
+      </div>
+    </div>`).join('');
+
+  // Render attachments (images + files)
+  const atts = Array.isArray(msg.attachments) ? msg.attachments : [];
+  const attHtml = atts.length ? `
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07);">
+      <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">📎 Attachments (${atts.length})</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        ${atts.map(a => {
+          const isImg = /^image\//i.test(a.contentType || '');
+          const src = `data:${a.contentType};base64,${a.content}`;
+          if (isImg) {
+            return `<div style="position:relative;">
+              <img src="${src}" alt="${escapeHtml(a.filename)}"
+                style="max-width:220px;max-height:180px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;object-fit:cover;"
+                onclick="window.open(this.src,'_blank')" title="Click to open full size" />
+              <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:3px;text-align:center;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(a.filename)}</div>
+            </div>`;
+          } else {
+            return `<a href="${src}" download="${escapeHtml(a.filename)}"
+              style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#00b8d4;text-decoration:none;font-size:12px;">
+              📄 ${escapeHtml(a.filename)}
+            </a>`;
+          }
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  // Render HTML body safely in sandboxed iframe if available
+  const hasHtml = msg.htmlBody && msg.htmlBody.trim().length > 50;
+  const bodyContent = hasHtml
+    ? `<iframe sandbox="allow-same-origin" srcdoc="${escapeHtml(msg.htmlBody)}"
+         style="width:100%;border:none;border-radius:6px;min-height:200px;background:#fff;" onload="this.style.height=(this.contentDocument.body.scrollHeight+20)+'px'"></iframe>`
+    : `<div style="font-size:14px;color:rgba(255,255,255,0.85);white-space:pre-wrap;line-height:1.7;">${escapeHtml(msg.body || '(empty)')}</div>`;
+
+  detailEl.innerHTML = `
+    <div style="height:100%;display:flex;flex-direction:column;overflow:hidden;">
+      <!-- Email Header -->
+      <div style="padding:16px 18px;border-bottom:1px solid rgba(255,255,255,0.07);flex-shrink:0;">
+        <div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:10px;line-height:1.3;">${escapeHtml(msg.subject)}</div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:${ac}22;border:2px solid ${ac}55;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:${ac};flex-shrink:0;">${ch}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:13px;font-weight:600;color:#fff;">${escapeHtml(senderName)}</div>
+            <div style="font-size:11px;color:rgba(255,255,255,0.4);">&lt;${escapeHtml(msg.userEmail)}&gt;</div>
+          </div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.3);flex-shrink:0;">${formatDate(msg.createdAt)}</div>
+        </div>
+      </div>
+      <!-- Email Body + Thread (scrollable) -->
+      <div style="flex:1;overflow-y:auto;padding:16px 18px;">
+        <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:16px;">
+          ${bodyContent}
+          ${attHtml}
+        </div>
+        ${replies}
+      </div>
+      <!-- Reply Box -->
+      <div style="padding:12px 18px;border-top:1px solid rgba(255,255,255,0.07);flex-shrink:0;">
+        <textarea id="replyBody_${id}" rows="3" placeholder="Write reply to user..."
+          style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px 14px;color:#fff;font-size:13px;outline:none;resize:vertical;font-family:inherit;line-height:1.5;"
+          onkeydown="if(e.ctrlKey&&e.key==='Enter')sendInboxReply('${id}')"></textarea>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+          <button onclick="sendInboxReply('${id}')"
+            style="padding:8px 20px;background:linear-gradient(135deg,#00b8d4,#0099b8);color:#fff;font-weight:700;font-size:13px;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:6px;">
+            ↩ Send Reply
+          </button>
+          <span id="replyStatus_${id}" style="font-size:12px;"></span>
+        </div>
+      </div>
+    </div>`;
 }
 
 // Open a btx chat ticket from inbox (navigates to Support section)
