@@ -449,6 +449,20 @@ function createAdminControllers({
     return res.json({ message: 'Withdrawal reviewed.', withdrawal: data });
   }
 
+  async function patchWithdrawalAddress(req, res) {
+    const address = String(req.body?.address || '').trim();
+    if (!address) return res.status(400).json({ message: 'address is required.' });
+    const data = await adminStore.patchWithdrawalAddress(req.params.withdrawalId, address);
+    await logAudit(req, {
+      module: 'wallet',
+      action: 'patch_withdrawal_address',
+      entityType: 'withdrawal',
+      entityId: req.params.withdrawalId,
+      meta: { address }
+    });
+    return res.json({ success: true, address, withdrawal: data });
+  }
+
   async function setCoinConfig(req, res) {
     const data = await adminStore.setCoinWithdrawalConfig(req.params.coin, req.body || {});
 
@@ -793,6 +807,7 @@ function createAdminControllers({
     reviewDeposit,
     listWithdrawals,
     reviewWithdrawal,
+    patchWithdrawalAddress,
     setCoinConfig,
     getCoinConfig,
     listHotWallets,
