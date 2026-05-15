@@ -1212,6 +1212,20 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     return result.value;
   }
 
+  async function patchWithdrawalAddress(withdrawalId, newAddress) {
+    const id = String(withdrawalId || '').trim();
+    const address = String(newAddress || '').trim();
+    if (!id) throw new Error('withdrawalId is required');
+    if (!address) throw new Error('address is required');
+    const result = await adminWithdrawals.findOneAndUpdate(
+      { id, status: { $in: ['PENDING', 'pending'] } },
+      { $set: { address, updatedAt: new Date() } },
+      { returnDocument: 'after' }
+    );
+    if (!result.value) throw new Error('Withdrawal not found or already processed');
+    return result.value;
+  }
+
   async function setCoinWithdrawalConfig(coin, payload) {
     const normalizedCoin = String(coin || '').trim().toUpperCase();
     if (!normalizedCoin) {
@@ -2044,6 +2058,7 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     reviewDeposit,
     listWithdrawals,
     reviewWithdrawal,
+    patchWithdrawalAddress,
     getCoinWalletConfig,
     getUserDepositConfig,
     setCoinWithdrawalConfig,
