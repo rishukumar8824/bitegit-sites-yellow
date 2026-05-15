@@ -1,23 +1,10 @@
 require('dotenv').config();
 
+const { WebSocketServer } = require('ws');
 const crypto = require('crypto');
-let geoip = null;
-try { geoip = require('geoip-lite'); } catch(e) { /* optional */ }
 const { localFaceMatch } = require('./services/local-face-match');
 const express = require('express');
 const path = require('path');
-
-// Show username if set (not email); else mask email → ab***@gmail.com
-function safeDisplayName(username, email) {
-  const u = String(username || '').trim();
-  const e = String(email || '').trim();
-  if (u && !u.includes('@')) return u;
-  const src = e || u;
-  if (!src.includes('@')) return src || 'User';
-  const [local, domain] = src.split('@');
-  const masked = local.length <= 2 ? local + '***' : local.slice(0, 2) + '***';
-  return masked + '@' + domain;
-}
 const { connectToMongo, getCollections, getMongoClient, getMongoConfig, isDbConnected } = require('./lib/db');
 const { createRepositories } = require('./lib/repositories');
 const { createWalletService } = require('./lib/wallet-service');
@@ -64,8 +51,7 @@ app.set('trust proxy', 1);
 const ADMIN_SEED_USERNAME = String(process.env.ADMIN_USERNAME || 'admin')
   .trim()
   .toLowerCase();
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || '').trim();
-if (!ADMIN_PASSWORD) { console.error('[FATAL] ADMIN_PASSWORD env var is not set. Set it in .env'); }
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'admin123').trim();
 const ADMIN_SEED_EMAIL = String(process.env.ADMIN_EMAIL || `${ADMIN_SEED_USERNAME || 'admin'}@admin.local`)
   .trim()
   .toLowerCase();
@@ -73,7 +59,7 @@ const ADMIN_SEED_ROLE = String(process.env.ADMIN_ROLE || 'SUPER_ADMIN')
   .trim()
   .toUpperCase();
 const SESSION_COOKIE_NAME = 'admin_session';
-const SESSION_TTL_MS = 1000 * 60 * 60 * 5; // 5-hour inactivity timeout
+const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 const ADMIN_ACCESS_COOKIE_NAME = 'admin_access_token';
 const ADMIN_REFRESH_COOKIE_NAME = 'admin_refresh_token';
 
@@ -82,198 +68,8 @@ const P2P_USER_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const P2P_ACCESS_COOKIE_NAME = 'p2p_access_token';
 const P2P_REFRESH_COOKIE_NAME = 'p2p_refresh_token';
 const P2P_ORDER_TTL_MS = 1000 * 60 * 15;
-const P2P_EXPIRY_SWEEP_INTERVAL_MS = 30 * 1000;
-const MERCHANT_ACTIVATION_DEPOSIT = 200; // Minimum security deposit to post ads
-const MERCHANT_BADGE_MIN_DEPOSIT = 500;  // Minimum security deposit for badge eligibility
-
-// In-memory merchant applications store (backed by MongoDB)
-const merchantApplications = new Map(); // id -> application
-let merchantAppCounter = 1;
-
-function _getBadgesArray(app) {
-  if (!app) return [];
-  if (Array.isArray(app.assignedBadges) && app.assignedBadges.length) return app.assignedBadges;
-  if (app.assignedBadge) return [app.assignedBadge];
-  return [];
-}
-
-function keepLatestMerchantBadges(targetMap, key, badges, reviewedAtMs) {
-  const normalizedKey = String(key || '').trim().toLowerCase();
-  if (!normalizedKey || !badges || !badges.length) return;
-  const existing = targetMap.get(normalizedKey);
-  if (!existing || reviewedAtMs >= existing.reviewedAtMs) {
-    targetMap.set(normalizedKey, { badges, reviewedAtMs });
-  } else {
-    // merge badges from both records
-    const merged = Array.from(new Set([...existing.badges, ...badges]));
-    targetMap.set(normalizedKey, { badges: merged, reviewedAtMs: existing.reviewedAtMs });
-  }
-}
-
-function buildApprovedMerchantBadgeLookup() {
-  const byUserId = new Map();
-  const byUsername = new Map();
-
-  for (const [, app] of merchantApplications) {
-    const badges = _getBadgesArray(app);
-    if (app.status !== 'approved' || !badges.length) continue;
-    const reviewedAtMs = app.reviewedAt ? new Date(app.reviewedAt).getTime() || 0 : 0;
-    keepLatestMerchantBadges(byUserId, app.userId, badges, reviewedAtMs);
-    keepLatestMerchantBadges(byUsername, app.username, badges, reviewedAtMs);
-  }
-
-  return { byUserId, byUsername };
-}
-
-function resolveApprovedMerchantBadges(lookup, userId, username, fallbackBadges = null) {
-  if (!lookup) return fallbackBadges;
-  const normalizedUserId = String(userId || '').trim().toLowerCase();
-  const normalizedUsername = String(username || '').trim().toLowerCase();
-  if (normalizedUserId && lookup.byUserId.has(normalizedUserId)) {
-    return lookup.byUserId.get(normalizedUserId).badges;
-  }
-  if (normalizedUsername && lookup.byUsername.has(normalizedUsername)) {
-    return lookup.byUsername.get(normalizedUsername).badges;
-  }
-  return fallbackBadges;
-}
-// backward-compat alias: returns first badge (single number) or null
-function resolveApprovedMerchantBadge(lookup, userId, username, fallbackBadge = null) {
-  const arr = resolveApprovedMerchantBadges(lookup, userId, username, null);
-  if (arr && arr.length) return arr[0];
-  return fallbackBadge;
-}
-
-function matchesMerchantIdentity(app, userId, username, email) {
-  const appUserId = String(app?.userId || '').trim();
-  const appUsername = String(app?.username || '').trim().toLowerCase();
-  const appEmail = String(app?.email || '').trim().toLowerCase();
-  const normalizedUserId = String(userId || '').trim();
-  const normalizedUsername = String(username || '').trim().toLowerCase();
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-
-  return Boolean(
-    (normalizedUserId && appUserId && appUserId === normalizedUserId) ||
-    (normalizedUsername && appUsername && appUsername === normalizedUsername) ||
-    (normalizedEmail && appEmail && appEmail === normalizedEmail)
-  );
-}
-
-function isLegacyDepositActivationApproval(app) {
-  return String(app?.approvalSource || '').trim().toLowerCase() === 'deposit_activation';
-}
-
-function getMerchantApplicationPriority(app) {
-  if (!app) {
-    return -1;
-  }
-  if (app.status === 'approved' && !isLegacyDepositActivationApproval(app)) {
-    return 4;
-  }
-  if (app.status === 'pending') {
-    return 3;
-  }
-  if (app.status === 'rejected') {
-    return 2;
-  }
-  if (app.status === 'approved') {
-    return 1;
-  }
-  return 0;
-}
-
-function getBestMerchantApplicationForUser({ userId, username, email }) {
-  let best = null;
-
-  for (const [, app] of merchantApplications) {
-    if (!matchesMerchantIdentity(app, userId, username, email)) {
-      continue;
-    }
-    if (!best) {
-      best = app;
-      continue;
-    }
-    const appPriority = getMerchantApplicationPriority(app);
-    const bestPriority = getMerchantApplicationPriority(best);
-    if (appPriority > bestPriority) {
-      best = app;
-      continue;
-    }
-    if (appPriority < bestPriority) {
-      continue;
-    }
-    const appTime = app.reviewedAt ? new Date(app.reviewedAt).getTime() : new Date(app.submittedAt || 0).getTime();
-    const bestTime = best.reviewedAt ? new Date(best.reviewedAt).getTime() : new Date(best.submittedAt || 0).getTime();
-    if (appTime > bestTime) {
-      best = app;
-    }
-  }
-
-  return best;
-}
-
-async function getMerchantAccessState({ userId, username, email }) {
-  const bestApplication = getBestMerchantApplicationForUser({ userId, username, email });
-  const badges = _getBadgesArray(bestApplication);
-  const badge = badges.length ? badges[0] : null;
-  const status = isLegacyDepositActivationApproval(bestApplication) ? null : bestApplication?.status || null;
-
-  let depositLocked = 0;
-  let merchantActivated = false;
-  if (repos && typeof repos.getP2PCredential === 'function' && email) {
-    try {
-      const credential = await repos.getP2PCredential(String(email || '').trim().toLowerCase());
-      const merchantMeta = credential?.merchant && typeof credential.merchant === 'object' ? credential.merchant : {};
-      const rawDepositLocked = Number(merchantMeta.depositLocked);
-      if (Number.isFinite(rawDepositLocked) && rawDepositLocked > 0) {
-        depositLocked = rawDepositLocked;
-      } else if (credential?.merchantDepositLocked === true) {
-        depositLocked = MERCHANT_ACTIVATION_DEPOSIT;
-      }
-      merchantActivated =
-        merchantMeta.isMerchant === true ||
-        credential?.isMerchant === true ||
-        credential?.merchantDepositLocked === true ||
-        depositLocked >= MERCHANT_ACTIVATION_DEPOSIT;
-      if (merchantActivated && depositLocked < MERCHANT_ACTIVATION_DEPOSIT) {
-        depositLocked = MERCHANT_ACTIVATION_DEPOSIT;
-      }
-    } catch (_) {}
-  }
-
-  const approvedMerchant = status === 'approved';
-  // If admin formally approved this merchant, treat as activated
-  // even if the deposit credential lookup failed (DB error/timeout)
-  if (approvedMerchant && !merchantActivated) {
-    merchantActivated = true;
-    if (depositLocked < MERCHANT_ACTIVATION_DEPOSIT) depositLocked = MERCHANT_ACTIVATION_DEPOSIT;
-  }
-
-  return {
-    application: bestApplication,
-    status,
-    badge,
-    badges,
-    depositLocked,
-    merchantActivated,
-    canApplyMerchant: merchantActivated,
-    canPostAds: merchantActivated, // no admin approval required — deposit is enough
-    badgeEligible: depositLocked >= MERCHANT_BADGE_MIN_DEPOSIT
-  };
-}
-
-async function saveMerchantApp(app) {
-  try {
-    const collections = getCollections();
-    await collections.merchantApplications.updateOne(
-      { id: app.id },
-      { $set: app },
-      { upsert: true }
-    );
-  } catch (e) {
-    console.error('[merchants] MongoDB save failed:', e.message);
-  }
-}
+const P2P_EXPIRY_SWEEP_INTERVAL_MS = 10 * 1000;
+const MERCHANT_ACTIVATION_DEPOSIT = 200;
 const SIGNUP_OTP_TTL_MS = Math.max(
   60 * 1000,
   Number.parseInt(String(process.env.SIGNUP_OTP_TTL_MS || '600000'), 10) || 600000
@@ -289,85 +85,41 @@ const ENABLE_DEV_TEST_ROUTES = String(process.env.ENABLE_DEV_TEST_ROUTES || '')
 const p2pOrderStreams = new Map();
 // Per-user SSE streams: userId → Set of res objects
 const p2pUserStreams = new Map();
-// Admin support SSE clients
-const adminSupportSseClients = new Set();
-function broadcastAdminSupportEvent(payload) {
-  const msg = `data: ${JSON.stringify(payload)}\n\n`;
-  adminSupportSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
-}
-const adminWithdrawalSseClients = new Set();
-function broadcastAdminWithdrawalEvent(payload) {
-  const msg = `data: ${JSON.stringify(payload)}\n\n`;
-  adminWithdrawalSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
-}
-const adminNewUserSseClients = new Set();
-function broadcastAdminNewUserEvent(payload) {
-  const msg = `data: ${JSON.stringify(payload)}\n\n`;
-  adminNewUserSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
-}
-const adminDepositSseClients = new Set();
-function broadcastAdminDepositEvent(payload) {
-  const msg = `data: ${JSON.stringify(payload)}\n\n`;
-  adminDepositSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
-}
 function getUserStreams(userId) {
   if (!p2pUserStreams.has(userId)) p2pUserStreams.set(userId, new Set());
   return p2pUserStreams.get(userId);
 }
+// Per-user WebSocket clients: userId → Set of WebSocket objects
+const p2pWsClients = new Map();
+function getWsClients(userId) {
+  if (!p2pWsClients.has(userId)) p2pWsClients.set(userId, new Set());
+  return p2pWsClients.get(userId);
+}
 function broadcastUserEvent(userId, eventName, payload) {
+  // SSE push
   const streams = p2pUserStreams.get(userId);
-  if (!streams || streams.size === 0) return;
-  const data = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
-  for (const stream of streams) stream.write(data);
+  if (streams && streams.size > 0) {
+    const sseData = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
+    for (const stream of streams) stream.write(sseData);
+  }
+  // WebSocket push
+  const wsClients = p2pWsClients.get(userId);
+  if (wsClients && wsClients.size > 0) {
+    const wsMsg = JSON.stringify({ event: eventName, data: payload });
+    for (const ws of wsClients) {
+      if (ws.readyState === 1 /* OPEN */) ws.send(wsMsg);
+    }
+  }
 }
 const DEFAULT_TICKER_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT'];
 const DEFAULT_SYMBOL_PRICES = {
-  BTCUSDT: 81390,
-  ETHUSDT: 2300,
-  BNBUSDT: 680,
-  XRPUSDT: 1.52,
-  SOLUSDT: 93,
-  ADAUSDT: 0.27,
-  DOGEUSDT: 0.17,
-  DOTUSDT: 4.2,
-  LTCUSDT: 85,
-  MATICUSDT: 0.45,
-  TRXUSDT: 0.12,
-  AVAXUSDT: 20,
-  LINKUSDT: 12,
-  UNIUSDT: 6.5,
-  ATOMUSDT: 4.5
+  BTCUSDT: 63000,
+  ETHUSDT: 3200,
+  BNBUSDT: 590,
+  XRPUSDT: 0.62,
+  SOLUSDT: 145,
+  ADAUSDT: 0.78
 };
-
-/* ── Server-side ticker cache — refreshes from Binance every 30s ── */
-const _tickerCache = { data: null, updatedAt: 0 };
-const _TICKER_ALL_SYMBOLS = Object.keys(DEFAULT_SYMBOL_PRICES);
-
-async function refreshTickerCache() {
-  try {
-    const encodedSymbols = encodeURIComponent(JSON.stringify(_TICKER_ALL_SYMBOLS));
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const response = await fetch(
-      `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodedSymbols}`,
-      { signal: controller.signal }
-    );
-    clearTimeout(timeout);
-    const data = await response.json();
-    if (response.ok && Array.isArray(data) && data.length > 0) {
-      _tickerCache.data = data.map((item) => ({
-        symbol: item.symbol,
-        lastPrice: Number(item.lastPrice),
-        change24h: Number(item.priceChangePercent),
-        volume24h: Number(item.quoteVolume)
-      }));
-      _tickerCache.updatedAt = Date.now();
-    }
-  } catch (_) {}
-}
-// Refresh immediately on startup, then every 30 seconds
-refreshTickerCache();
-setInterval(refreshTickerCache, 30000);
 
 const KYC_ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
 const KYC_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -429,8 +181,6 @@ const dataDir = path.join(__dirname, 'data');
 const dataFile = path.join(dataDir, 'leads.json');
 
 let repos = null;
-const { getIpLocation } = require('./lib/geo-lookup');
-
 let walletService = null;
 let authMiddleware = null;
 let adminStore = null;
@@ -450,7 +200,7 @@ let socialFeedService = null;
 let persistenceReady = false;
 let httpServer = null;
 let shuttingDown = false;
-let bootRetryTimer = null;
+// bootRetryTimer removed — no retry logic, boot() runs exactly once
 let p2pExpirySweepTimer = null;
 const socialFeedBootstrapConfig = readSocialFeedConfig();
 const socialFeedBootstrapStore = createSocialFeedFallbackStore();
@@ -472,21 +222,35 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use(sanitizeRequestPayload);
 applySecurityHardening(app);
-
-// Rewrite /api/v1/* → /* so frontend calls like /api/v1/auth/login hit /auth/login
-// (skip /api/v1/market/* which has its own explicit routes)
-app.use(function(req, res, next) {
-  if (req.url.startsWith('/api/v1/') && !req.url.startsWith('/api/v1/market/')) {
-    req.url = req.url.slice('/api/v1'.length);
-  }
-  next();
-});
 app.use('/downloads', (req, res, next) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
   next();
 });
+
+// ── Clean-URL redirects: must be BEFORE express.static so .html requests are
+//    caught here first instead of being served as raw files. ──
+(function registerHtmlRedirects() {
+  const HTML_REDIRECTS = {
+    '/auth.html'    : '/auth',
+    '/login.html'   : '/auth',   // alias — p2p-order-flow.html links here
+    '/markets.html' : '/markets',
+    '/chart.html'   : '/chart',
+    '/p2p.html'     : '/p2p',
+    '/p2p-buy.html' : '/p2p-buy',
+    '/kyc.html'     : '/kyc',
+    '/trade.html'   : '/trade',
+  };
+  Object.entries(HTML_REDIRECTS).forEach(([from, to]) => {
+    app.get(from, (req, res) => {
+      // preserve query string (e.g. /auth.html?mode=signup → /auth?mode=signup)
+      const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      res.redirect(301, to + qs);
+    });
+  });
+})();
+
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   maxAge: 0,
@@ -747,9 +511,9 @@ async function getDepositWalletCatalogForUser() {
 
 function normalizeKycStatus(rawStatus) {
   const normalized = String(rawStatus || '').trim().toUpperCase();
-  if (normalized === 'APPROVED') return 'VERIFIED'; // admin uses APPROVED
-  if (normalized === 'PENDING') return 'PENDING_REVIEW';
-  if (['NOT_SUBMITTED', 'PENDING_REVIEW', 'VERIFIED', 'REJECTED'].includes(normalized)) return normalized;
+  if (['NOT_SUBMITTED', 'PENDING_REVIEW', 'VERIFIED', 'REJECTED'].includes(normalized)) {
+    return normalized;
+  }
   return 'NOT_SUBMITTED';
 }
 
@@ -916,7 +680,7 @@ function buildP2PKycProfileFromCredential(credential = {}) {
   return {
     status,
     statusLabel: getKycStatusLabel(status),
-    canBuy: true,
+    canBuy: status === 'VERIFIED',
     level: String(credential?.kycLevel || 'BASIC').trim().toUpperCase() || 'BASIC',
     aadhaarLast4: String(credential?.kycAadhaarLast4 || '').trim(),
     requestId: String(credential?.kycRequestId || '').trim(),
@@ -1222,64 +986,9 @@ function getRequestIp(req) {
   return firstForwarded || String(req.ip || req.connection?.remoteAddress || 'unknown');
 }
 
-// In-memory geo cache: avoid hammering ip-api.com for same IP
-const _geoCache = new Map();
-const GEO_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
-
-function getGeoInfo(ip) {
-  // Fast offline fallback for private/local IPs
-  const cleanIp = String(ip || '').replace(/^::ffff:/, '').trim();
-  if (!cleanIp || cleanIp === 'unknown' || cleanIp === '127.0.0.1' || cleanIp.startsWith('192.168.') || cleanIp.startsWith('10.') || cleanIp === '::1') {
-    return {};
-  }
-
-  // Return cached result if fresh
-  const cached = _geoCache.get(cleanIp);
-  if (cached && (Date.now() - cached.ts) < GEO_CACHE_TTL) {
-    return cached.data;
-  }
-
-  // Fallback: try geoip-lite offline first (instant)
-  let offlineResult = {};
-  if (geoip) {
-    try {
-      const geo = geoip.lookup(cleanIp);
-      if (geo) offlineResult = { country: geo.country || '', region: geo.region || '', city: geo.city || '', timezone: geo.timezone || '', ll: geo.ll || [] };
-    } catch(_) {}
-  }
-
-  // Fire async ip-api.com lookup for accurate city/region data (non-blocking)
-  try {
-    const http = require('http');
-    http.get(`http://ip-api.com/json/${cleanIp}?fields=status,country,countryCode,regionName,city,lat,lon,timezone,isp`, (res) => {
-      let raw = '';
-      res.on('data', d => { raw += d; });
-      res.on('end', () => {
-        try {
-          const d = JSON.parse(raw);
-          if (d.status === 'success') {
-            const result = {
-              country: d.countryCode || '',
-              region: d.regionName || '',
-              city: d.city || '',
-              timezone: d.timezone || '',
-              isp: d.isp || '',
-              ll: [d.lat || 0, d.lon || 0]
-            };
-            _geoCache.set(cleanIp, { data: result, ts: Date.now() });
-          }
-        } catch(_) {}
-      });
-    }).on('error', () => {});
-  } catch(_) {}
-
-  // Return offline result now; next request will get accurate cached result
-  return offlineResult;
-}
-
 const loginAttemptLimiter = createIpAttemptLimiter({
-  maxAttempts: 5,
-  windowMs: 10 * 60 * 1000   // 5 attempts per 10 minutes
+  maxAttempts: 100,
+  windowMs: 1 * 60 * 1000
 });
 
 async function createSession() {
@@ -1363,10 +1072,7 @@ async function handleLegacyAdminLogin(req, res) {
     return res.status(503).json({ message: 'Admin service is initializing. Please try again.' });
   }
 
-  // Use timing-safe comparison to prevent timing attacks
-  const pwdMatch = ADMIN_PASSWORD.length > 0 &&
-    (() => { try { return crypto.timingSafeEqual(Buffer.from(password), Buffer.from(ADMIN_PASSWORD)); } catch(_) { return false; } })();
-  if (!isLegacyAdminIdentifier(identifier) || !pwdMatch) {
+  if (!isLegacyAdminIdentifier(identifier) || password !== ADMIN_PASSWORD) {
     return res.status(401).json({ message: 'Invalid login credentials.' });
   }
 
@@ -1403,26 +1109,6 @@ app.post('/api/admin/login', async (req, res, next) => {
     return next();
   }
   return handleLegacyAdminLogin(req, res);
-});
-// Early handler: during cold-start, always return 503 (not 401) for /auth/refresh.
-// Returning 401 here would log the admin out before the service is ready.
-// Once adminControllers is set the real handler takes over and validates properly.
-app.post('/api/admin/auth/refresh', (req, res, next) => {
-  if (adminControllers && adminAuthMiddleware) return next();
-  return res.status(503).json({ message: 'Admin service is initializing.', code: 'SERVICE_INITIALIZING' });
-});
-
-// Return JSON 503 for all other /api/admin/* routes when the admin module has not yet initialised.
-// Without this, Express emits a plain-text "Cannot GET …" 404 during cold-start / MongoDB reconnect,
-// which the frontend parses as "Request failed (404)".
-app.use('/api/admin', (req, res, next) => {
-  if (!adminControllers || !adminAuthMiddleware) {
-    return res.status(503).json({
-      message: 'Admin service is initializing. Please refresh in a moment.',
-      code: 'SERVICE_INITIALIZING'
-    });
-  }
-  return next();
 });
 
 function buildP2PUserFromEmail(email, role = 'USER') {
@@ -1461,7 +1147,8 @@ async function persistRefreshToken(user, refreshToken, refreshTokenExpiresAtMs) 
 
 async function issueAuthTokenPairForUser(user) {
   const tokenPair = tokenService.createTokenPair(user);
-  await persistRefreshToken(user, tokenPair.refreshToken, tokenPair.refreshTokenExpiresAt);
+  // Fire-and-forget — JWT is self-contained; DB failure must not block login.
+  persistRefreshToken(user, tokenPair.refreshToken, tokenPair.refreshTokenExpiresAt).catch(() => {});
   return tokenPair;
 }
 
@@ -1485,122 +1172,49 @@ function clearAdminAuthCookies(res) {
   clearCookie(res, ADMIN_REFRESH_COOKIE_NAME);
 }
 
-function toP2PRequestUser(input = {}) {
-  const userId = String(input.id || input.userId || input.sub || '').trim();
-  if (!userId) {
-    return null;
-  }
-
-  return {
-    id: userId,
-    userId,
-    username: String(input.username || '').trim(),
-    email: String(input.email || '')
-      .trim()
-      .toLowerCase(),
-    role: tokenService.normalizeRole(input.role || 'USER'),
-    expiresAt: Date.now() + P2P_USER_TTL_MS
-  };
-}
-
-async function restoreP2PUserFromRefreshToken(req, res) {
-  if (!repos) {
-    return null;
-  }
-
+async function getP2PUserFromRequest(req) {
+  // ── JWT check — runs ALWAYS, even before DB connects (authMiddleware may be null on cold start) ──
   const cookies = parseCookies(req);
-  const refreshToken = authMiddleware
-    ? authMiddleware.extractRefreshTokenFromRequest(req)
-    : String(cookies[P2P_REFRESH_COOKIE_NAME] || '').trim();
+  const authHeader = String(req.headers.authorization || '').trim();
+  const jwtToken = (authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '') ||
+    String(cookies[P2P_ACCESS_COOKIE_NAME] || '').trim() ||
+    String(cookies.bitegit_auth_access || '').trim() ||
+    String(cookies.access_token || '').trim();
 
-  if (!refreshToken) {
-    return null;
-  }
-
-  const clearAuthState = async () => {
-    const refreshTokenHash = tokenService.hashRefreshToken(refreshToken);
-    await repos.deleteRefreshTokenByHash(refreshTokenHash).catch(() => {});
-    if (res) {
-      clearCookie(res, P2P_USER_COOKIE_NAME);
-      clearP2PAuthCookies(res);
-    }
-  };
-
-  try {
-    const decoded = tokenService.verifyRefreshToken(refreshToken);
-    const refreshTokenHash = tokenService.hashRefreshToken(refreshToken);
-    const dbToken = await repos.getRefreshTokenByHash(refreshTokenHash);
-    if (!dbToken || String(dbToken.userId || '').trim() !== String(decoded.sub || '').trim()) {
-      await clearAuthState();
-      return null;
-    }
-
-    const expiresAtMs = new Date(dbToken.expiresAt).getTime();
-    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
-      await clearAuthState();
-      return null;
-    }
-
-    const user = toP2PRequestUser({
-      id: dbToken.userId,
-      username: dbToken.username,
-      email: dbToken.email,
-      role: dbToken.role
-    });
-    if (!user) {
-      await clearAuthState();
-      return null;
-    }
-
-    if (res) {
-      const tokenPair = await issueAuthTokenPairForUser(user);
-      setP2PAuthCookies(res, tokenPair);
-
-      if (user.email) {
-        const legacySession = await createP2PUserSession(user.email, user.role);
-        setCookie(res, P2P_USER_COOKIE_NAME, legacySession.token, P2P_USER_TTL_MS / 1000);
+  if (jwtToken) {
+    try {
+      const decoded = tokenService.verifyAccessToken(jwtToken);
+      if (String(decoded?.typ || 'access').trim().toLowerCase() === 'access' && String(decoded?.sub || '').trim()) {
+        return {
+          id: String(decoded.sub).trim(),
+          username: String(decoded.username || '').trim(),
+          email: String(decoded.email || '').trim().toLowerCase(),
+          role: tokenService.normalizeRole(decoded.role || 'USER'),
+          expiresAt: Date.now() + P2P_USER_TTL_MS
+        };
       }
-    }
-
-    return user;
-  } catch (error) {
-    await clearAuthState();
-    return null;
-  }
-}
-
-async function getP2PUserFromRequest(req, res = null) {
-  if (authMiddleware) {
-    const accessToken = authMiddleware.extractAccessTokenFromRequest(req);
-    if (accessToken) {
-      try {
-        const decoded = tokenService.verifyAccessToken(accessToken);
-        if (String(decoded?.typ || 'access').trim().toLowerCase() === 'access' && String(decoded?.sub || '').trim()) {
-          return toP2PRequestUser(decoded);
-        }
-      } catch (error) {
-        // Fall back to legacy session lookup and refresh-token recovery.
-      }
+    } catch (_) {
+      // JWT invalid/expired — fall through to legacy session
     }
   }
 
-  const cookies = parseCookies(req);
+  // ── Legacy session fallback (requires DB) ──
   const token = cookies[P2P_USER_COOKIE_NAME];
 
   if (!token) {
-    return restoreP2PUserFromRefreshToken(req, res);
+    return null;
   }
 
-  if (!repos) return restoreP2PUserFromRefreshToken(req, res); // DB not ready yet
+  if (!repos) return null; // DB not ready yet
 
   const session = await repos.getP2PUserSession(token);
   if (!session || !session.expiresAt) {
-    return restoreP2PUserFromRefreshToken(req, res);
+    return null;
   }
 
   if (new Date(session.expiresAt).getTime() < Date.now()) {
     await repos.deleteP2PUserSession(token);
-    return restoreP2PUserFromRefreshToken(req, res);
+    return null;
   }
 
   const expiresAt = Date.now() + P2P_USER_TTL_MS;
@@ -1608,7 +1222,6 @@ async function getP2PUserFromRequest(req, res = null) {
 
   return {
     id: session.userId,
-    userId: session.userId,
     username: session.username,
     email: session.email,
     role: tokenService.normalizeRole(session.role || 'USER'),
@@ -1617,67 +1230,16 @@ async function getP2PUserFromRequest(req, res = null) {
 }
 
 async function requiresP2PUser(req, res, next) {
+  if (authMiddleware) {
+    return authMiddleware.requireAuth({ roles: ['USER', 'ADMIN'], allowLegacy: true })(req, res, next);
+  }
   try {
-    const user = await getP2PUserFromRequest(req, res);
+    const user = await getP2PUserFromRequest(req);
     if (!user) {
       return res.status(401).json({ message: 'Please login to continue.' });
     }
 
-    req.authUser = {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: tokenService.normalizeRole(user.role || 'USER')
-    };
     req.p2pUser = user;
-
-    // Enrich p2pUser with credential data for cross-identity matching.
-    // Needed because admin JWT (adm_...) and session (usr_...) are different IDs
-    // for the same physical user. Orders created via admin JWT store sellerUserId=adm_...
-    // but when the user views via session their id=usr_... doesn't match.
-    // We look up the credential by email OR by userId and attach alternateIds so that
-    // isParticipant() can cross-check both identities.
-    try {
-      const cols = getCollections();
-      if (cols && cols.p2pCredentials) {
-        let cred = null;
-        if (user.email) {
-          // Primary lookup by email
-          cred = await cols.p2pCredentials.findOne(
-            { email: user.email },
-            { projection: { userId: 1, email: 1, username: 1 } }
-          );
-          // Fire-and-forget lastActiveAt update
-          cols.p2pCredentials.updateOne(
-            { email: user.email },
-            { $set: { lastActiveAt: new Date() } }
-          ).catch(() => {});
-        }
-        if (!cred && user.id) {
-          // Fallback lookup by userId (for admin JWT users whose email may be empty)
-          cred = await cols.p2pCredentials.findOne(
-            { userId: user.id },
-            { projection: { userId: 1, email: 1, username: 1 } }
-          );
-        }
-        if (cred) {
-          // Always use fresh email/username from DB — session may have stale values
-          // (e.g. user updated username in profile after logging in)
-          if (!req.p2pUser.email && cred.email) req.p2pUser.email = cred.email;
-          // Always prefer DB username if it exists and is a real username (not email-shaped)
-          if (cred.username && !cred.username.includes('@')) {
-            req.p2pUser.username = cred.username;
-          }
-          // Attach alternate userId from credential (may differ from JWT sub)
-          if (cred.userId && cred.userId !== req.p2pUser.id) {
-            req.p2pUser.altId = cred.userId;
-          }
-        }
-      }
-    } catch (_) {
-      // Non-fatal — proceed without enrichment
-    }
-
     return next();
   } catch (error) {
     return res.status(500).json({ message: 'Server error while validating user session.' });
@@ -1707,7 +1269,6 @@ function normalizeOrderState(order) {
     return null;
   }
 
-  const disputedDate = order.disputedAt ? new Date(order.disputedAt) : null;
   const remainingSeconds =
     P2P_ORDER_ACTIVE_STATUSES.includes(order.status) && Number(order.expiresAt) > Date.now()
       ? Math.max(0, Math.floor((Number(order.expiresAt) - Date.now()) / 1000))
@@ -1726,22 +1287,14 @@ function normalizeOrderState(order) {
     paymentMethod: order.paymentMethod || 'UPI',
     participants: order.participants,
     participantsLabel: getParticipantsText(order),
-    sellerUserId: order.sellerUserId,
-    sellerId: order.sellerId || order.sellerUserId || null,
+    sellerUserId: order.sellerUserId || order.sellerId,
     sellerUsername: order.sellerUsername,
-    sellerEmail: order.sellerEmail || null,
-    buyerUserId: order.buyerUserId,
-    buyerId: order.buyerId || order.buyerUserId || null,
+    buyerUserId: order.buyerUserId || order.buyerId,
     buyerUsername: order.buyerUsername,
-    buyerEmail: order.buyerEmail || null,
+    fiatAmount: order.fiatAmount || order.amountInr,
+    cryptoAmount: order.cryptoAmount || order.assetAmount,
+    assetAmount: order.assetAmount || order.cryptoAmount,
     escrowAmount: order.escrowAmount,
-    disputedAt: disputedDate && !Number.isNaN(disputedDate.getTime()) ? disputedDate.toISOString() : null,
-    disputedBy: order.disputedBy || null,
-    disputeReason: order.disputeReason || null,
-    disputeStatus: order.disputeStatus || null,
-    appealDetails: order.appealDetails || null,
-    appealedByRole: order.appealedByRole || null,
-    preDisputeStatus: order.preDisputeStatus || null,
     isParticipant: true,
     createdAt: new Date(order.createdAt).toISOString(),
     expiresAt: new Date(order.expiresAt).toISOString(),
@@ -1750,77 +1303,31 @@ function normalizeOrderState(order) {
   };
 }
 
-function isParticipant(order, userId, p2pUser) {
-  if (!order || !userId) return false;
-
-  // Check participants array by id
-  if (Array.isArray(order.participants) && order.participants.some((p) => p.id === userId)) return true;
-
-  // Check direct userId fields
-  if ([order.sellerUserId, order.buyerUserId, order.sellerId, order.buyerId].includes(userId)) return true;
-
-  // Check alternate identity (admin JWT id ↔ session id cross-reference)
-  const altId = String((p2pUser && p2pUser.altId) || '').trim();
-  if (altId) {
-    if (Array.isArray(order.participants) && order.participants.some((p) => p.id === altId)) return true;
-    if ([order.sellerUserId, order.buyerUserId, order.sellerId, order.buyerId].includes(altId)) return true;
+function isParticipant(order, userId) {
+  if (!order || !userId) {
+    return false;
   }
 
-  // Fallback: match by username or email for legacy orders that may have stored differently
-  if (p2pUser) {
-    const myUsername = String(p2pUser.username || '').trim().toLowerCase();
-    const myEmail = String(p2pUser.email || '').trim().toLowerCase();
-    if (myUsername && Array.isArray(order.participants) &&
-      order.participants.some((p) => String(p.username || '').trim().toLowerCase() === myUsername)) return true;
-    if (myUsername && [order.sellerUsername, order.buyerUsername].some(
-      (u) => String(u || '').trim().toLowerCase() === myUsername)) return true;
-    if (myEmail && [order.sellerEmail, order.buyerEmail].some(
-      (e) => String(e || '').trim().toLowerCase() === myEmail)) return true;
+  if (Array.isArray(order.participants) && order.participants.some((participant) => participant.id === userId)) {
+    return true;
   }
 
-  return false;
+  return [order.sellerUserId, order.buyerUserId].includes(userId);
 }
 
-function resolveMyRole(order, p2pUser) {
-  const myId = String(p2pUser?.id || '').trim();
-  const myAltId = String(p2pUser?.altId || '').trim(); // cross-identity: adm_... ↔ usr_...
-  const myName = String(p2pUser?.username || '').trim().toLowerCase();
-  const myEmail = String(p2pUser?.email || '').trim().toLowerCase();
+async function listActiveOrdersForUserResponse(userId, { limit = 50 } = {}) {
+  const activeStatuses = P2P_ORDER_ACTIVE_STATUSES;
+  const rows = typeof repos?.listP2PActiveOrdersForUser === 'function'
+    ? await repos.listP2PActiveOrdersForUser({ userId, limit })
+    : (await repos.listP2POrderHistory(userId, { limit, offset: 0 })).orders.filter((order) => activeStatuses.includes(order.status));
 
-  function matchesId(id) {
-    return id === myId || (myAltId && id === myAltId);
-  }
-
-  const sellerMatches =
-    matchesId(order.sellerUserId) ||
-    matchesId(order.sellerId) ||
-    (myName && String(order.sellerUsername || '').trim().toLowerCase() === myName) ||
-    (myEmail && String(order.sellerEmail || '').trim().toLowerCase() === myEmail) ||
-    (Array.isArray(order.participants) && order.participants.some(
-      (p) => p.role === 'seller' && (
-        matchesId(p.id) ||
-        (myName && String(p.username || '').trim().toLowerCase() === myName) ||
-        (myEmail && String(p.email || '').trim().toLowerCase() === myEmail)
-      )
-    ));
-  if (sellerMatches) {
-    return 'seller';
-  }
-
-  const buyerMatches =
-    matchesId(order.buyerUserId) ||
-    matchesId(order.buyerId) ||
-    (myName && String(order.buyerUsername || '').trim().toLowerCase() === myName) ||
-    (myEmail && String(order.buyerEmail || '').trim().toLowerCase() === myEmail) ||
-    (Array.isArray(order.participants) && order.participants.some(
-      (p) => p.role === 'buyer' && (
-        matchesId(p.id) ||
-        (myName && String(p.username || '').trim().toLowerCase() === myName) ||
-        (myEmail && String(p.email || '').trim().toLowerCase() === myEmail)
-      )
-    ));
-
-  return buyerMatches ? 'buyer' : '';
+  return rows
+    .map((order) => normalizeOrderState(order))
+    .map((order) => ({
+      ...order,
+      isParticipant: true,
+      paymentMethod: order.paymentMethod
+    }));
 }
 
 function addSystemMessage(order, text) {
@@ -1843,9 +1350,6 @@ function toClientMessages(messages) {
     };
     if (msg.imageBase64) m.imageBase64 = msg.imageBase64;
     if (msg.role) m.role = msg.role; // 'buyer' | 'seller' | undefined=all
-    if (msg.senderRole) m.senderRole = msg.senderRole;
-    if (msg.messageType) m.messageType = msg.messageType;
-    if (msg.isSystem != null) m.isSystem = Boolean(msg.isSystem);
     return m;
   });
 }
@@ -1866,23 +1370,6 @@ function broadcastOrderEvent(orderId, eventName, payload) {
   const data = `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
   for (const stream of streams) {
     stream.write(data);
-  }
-}
-
-function getOrderParticipantIds(order) {
-  const participantIds = new Set();
-  for (const candidate of [order?.sellerUserId, order?.buyerUserId, order?.sellerId, order?.buyerId]) {
-    const normalized = String(candidate || '').trim();
-    if (normalized) {
-      participantIds.add(normalized);
-    }
-  }
-  return Array.from(participantIds);
-}
-
-function broadcastParticipantOrderEvent(order, eventName, payload) {
-  for (const participantId of getOrderParticipantIds(order)) {
-    broadcastUserEvent(participantId, eventName, payload);
   }
 }
 
@@ -1914,7 +1401,6 @@ async function withOrderMutation(orderId, mutator, maxRetries = 4) {
 
 app.post('/api/p2p/login', async (req, res) => {
   const requestIp = getRequestIp(req);
-  const requestUa = String(req.headers['user-agent'] || '').trim().slice(0, 1024);
   const ipCheck = loginAttemptLimiter(`p2p_login:${getRequestIp(req)}`);
   if (!ipCheck.allowed) {
     if (auditLogService) {
@@ -1974,11 +1460,14 @@ app.post('/api/p2p/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
-    // SECURITY: Do NOT auto-create accounts on login — return 401 if not registered
+    let userRole = tokenService.normalizeRole(existingCredential?.role || 'USER');
     if (!existingCredential) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
+      const hash = repos.hashPassword(password);
+      await repos.setP2PCredential(email, hash, {
+        role: 'USER'
+      });
+      userRole = 'USER';
     }
-    let userRole = tokenService.normalizeRole(existingCredential.role || 'USER');
 
     const { token, user } = await createP2PUserSession(email, userRole);
     const tokenPair = await issueAuthTokenPairForUser(user);
@@ -1986,7 +1475,6 @@ app.post('/api/p2p/login', async (req, res) => {
     setCookie(res, P2P_USER_COOKIE_NAME, token, P2P_USER_TTL_MS / 1000);
     setP2PAuthCookies(res, tokenPair);
     if (auditLogService) {
-      const loc = await getIpLocation(requestIp);
       await auditLogService.safeLog({
         userId: user.id,
         action: 'login_success',
@@ -1994,11 +1482,7 @@ app.post('/api/p2p/login', async (req, res) => {
         metadata: {
           route: '/api/p2p/login',
           email: user.email,
-          role: user.role,
-          userAgent: requestUa,
-          country: loc.country,
-          city: loc.city,
-          region: loc.region
+          role: user.role
         }
       });
     }
@@ -2209,105 +1693,22 @@ app.post('/api/p2p/logout', async (req, res) => {
   }
 });
 
-// ── Update P2P username ──
-app.put('/api/p2p/profile', requiresP2PUser, async (req, res) => {
-  try {
-    const userId = req.p2pUser.id;
-    const email = req.p2pUser.email;
-    const newUsername = String(req.body.nickname || req.body.username || '').trim();
-
-    if (!newUsername || newUsername.length < 3 || newUsername.length > 20) {
-      return res.status(400).json({ ok: false, message: 'Username must be 3–20 characters.' });
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(newUsername)) {
-      return res.status(400).json({ ok: false, message: 'Only letters, numbers and underscores allowed.' });
-    }
-
-    const collections = getCollections();
-
-    // Check change limit (max 5 times)
-    const cred = await collections.p2pCredentials.findOne({ email });
-    const changeCount = Number(cred?.usernameChangeCount || 0);
-    if (changeCount >= 5) {
-      return res.status(400).json({ ok: false, message: 'Username can only be changed 5 times. Limit reached.' });
-    }
-
-    // Check uniqueness
-    const taken = await collections.p2pCredentials.findOne({ username: newUsername, email: { $ne: email } });
-    if (taken) return res.status(400).json({ ok: false, message: 'Username already taken. Try another.' });
-
-    // Update credential + increment change count
-    await collections.p2pCredentials.updateOne(
-      { email },
-      { $set: { username: newUsername, updatedAt: new Date() }, $inc: { usernameChangeCount: 1 } }
-    );
-
-    // Update all offers by this user
-    await collections.p2pOffers.updateMany(
-      { createdByUserId: userId },
-      { $set: { advertiser: newUsername, createdByUsername: newUsername } }
-    );
-
-    // Update wallet username
-    await collections.wallets.updateOne({ userId }, { $set: { username: newUsername } });
-
-    // Update ALL active sessions so refresh returns the new username immediately
-    await collections.p2pUserSessions.updateMany({ userId }, { $set: { username: newUsername } });
-
-    // Update orders where this user is buyer or seller (participants array)
-    await collections.p2pOrders.updateMany(
-      { 'participants.id': userId },
-      { $set: { 'participants.$[p].username': newUsername } },
-      { arrayFilters: [{ 'p.id': userId }] }
-    );
-
-    const remaining = 5 - (changeCount + 1);
-    return res.json({ ok: true, nickname: newUsername, message: 'Username updated.', changesLeft: remaining });
-  } catch (err) {
-    console.error('[profile] update error:', err.message);
-    return res.status(500).json({ ok: false, message: 'Server error while updating username.' });
-  }
-});
-
 app.get('/api/p2p/me', async (req, res) => {
-  const user = await getP2PUserFromRequest(req, res);
+  const user = await getP2PUserFromRequest(req);
 
   if (!user) {
     return res.json({ loggedIn: false, user: null });
   }
 
-  // Always fetch fresh credential from DB so profile username/email is up-to-date
-  // (session token may have stale username if user updated profile after login)
-  let freshUsername = user.username;
-  let freshEmail = user.email;
-  try {
-    const cols = getCollections();
-    if (cols && cols.p2pCredentials) {
-      const cred = await cols.p2pCredentials.findOne(
-        user.email
-          ? { email: user.email }
-          : { userId: user.id },
-        { projection: { username: 1, email: 1 } }
-      );
-      if (cred) {
-        if (cred.username && !cred.username.includes('@')) freshUsername = cred.username;
-        if (cred.email) freshEmail = cred.email;
-      }
-    }
-  } catch (_) {}
-
-  const kycProfile = await getP2PKycProfileByEmail(freshEmail);
+  const kycProfile = await getP2PKycProfileByEmail(user.email);
 
   return res.json({
     loggedIn: true,
     user: {
       id: user.id,
-      username: freshUsername,
-      email: freshEmail,
+      username: user.username,
+      email: user.email,
       role: tokenService.normalizeRole(user.role || 'USER'),
-      createdAt: user.createdAt || null,
-      avatar: user.avatar || '',
-      emailVerified: true, // logged-in = email verified (registration requires OTP on email)
       kyc: kycProfile
     }
   });
@@ -2321,24 +1722,6 @@ app.get('/api/p2p/kyc/status', requiresP2PUser, async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ message: 'Server error while loading KYC status.' });
-  }
-});
-
-app.post('/api/p2p/kyc/basic-details', requiresP2PUser, async (req, res) => {
-  try {
-    const email = String(req.p2pUser?.email || '').trim().toLowerCase();
-    const collections = getCollections();
-    const patch = { updatedAt: new Date() };
-    if (req.body.fullName)  patch.fullName  = String(req.body.fullName).trim().slice(0, 100);
-    if (req.body.mobile)    patch.mobile    = String(req.body.mobile).trim().slice(0, 20);
-    if (req.body.address)   patch.address   = String(req.body.address).trim().slice(0, 200);
-    if (req.body.country)   patch.country   = String(req.body.country).trim().slice(0, 5);
-    if (req.body.dob)       patch.dob       = String(req.body.dob).trim().slice(0, 12);
-    if (req.body.idType)    patch.idType    = String(req.body.idType).trim().slice(0, 30);
-    await collections.p2pCredentials.updateOne({ email }, { $set: patch }, { upsert: false });
-    return res.json({ ok: true });
-  } catch (err) {
-    return res.status(500).json({ ok: false, message: err.message });
   }
 });
 
@@ -2374,23 +1757,11 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
   let aadhaarFrontImage = null;
   let aadhaarBackImage = null;
   let selfieWithDocumentImage = null;
-  let legalName = '';
-  let idType    = 'aadhaar';
-  let dob       = '';
-  let mobile    = '';
-  let address   = '';
-  let country   = '';
   try {
-    aadhaarDigits           = normalizeAadhaarNumber(req.body?.aadhaarNumber);
-    aadhaarFrontImage       = extractKycImageData(req.body?.aadhaarFrontImage, 'Aadhaar front');
-    aadhaarBackImage        = req.body?.aadhaarBackImage ? extractKycImageData(req.body?.aadhaarBackImage, 'Aadhaar back') : null;
+    aadhaarDigits = normalizeAadhaarNumber(req.body?.aadhaarNumber);
+    aadhaarFrontImage = extractKycImageData(req.body?.aadhaarFrontImage, 'Aadhaar front');
+    aadhaarBackImage = req.body?.aadhaarBackImage ? extractKycImageData(req.body?.aadhaarBackImage, 'Aadhaar back') : null;
     selfieWithDocumentImage = extractKycImageData(req.body?.selfieWithDocumentImage, 'Selfie with document');
-    legalName = String(req.body?.legalName || req.body?.fullName || '').trim().slice(0, 100);
-    idType    = String(req.body?.idType    || 'aadhaar').trim().slice(0, 30);
-    dob       = String(req.body?.dob       || '').trim().slice(0, 12);
-    mobile    = String(req.body?.mobile    || '').trim().slice(0, 20);
-    address   = String(req.body?.address   || '').trim().slice(0, 200);
-    country   = String(req.body?.country   || '').trim().slice(0, 5);
   } catch (error) {
     return res.status(400).json({ message: error.message || 'Invalid KYC submission payload.' });
   }
@@ -2402,6 +1773,13 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
     }
     const currentKyc = buildP2PKycProfileFromCredential(currentCredential || {});
 
+    if (currentKyc.status === 'VERIFIED') {
+      return res.json({
+        message: 'KYC is already verified for this account.',
+        kyc: currentKyc
+      });
+    }
+
     const requestId = createKycRequestId();
     const submittedAt = new Date();
     const faceMatch = await runKycFaceMatch({
@@ -2409,19 +1787,26 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
       selfieWithDocumentImage
     });
 
-    // Always queue for manual admin review — admin approves/rejects from dashboard.
-    const nextStatus = 'PENDING_REVIEW';
-    const rejectionReason = '';
+    // Auto-approve when face match is available AND passed.
+    // Auto-reject when face match is available AND failed (score too low).
+    // Fall back to manual PENDING_REVIEW when face match provider is unavailable.
+    let nextStatus;
+    let rejectionReason = '';
+    if (faceMatch.available && faceMatch.passed) {
+      nextStatus = 'VERIFIED';
+    } else if (faceMatch.available && !faceMatch.passed) {
+      nextStatus = 'REJECTED';
+      rejectionReason = faceMatch.reason === 'face_very_different'
+        ? 'Face in selfie does not match the Aadhaar photo. Please re-submit with a clear selfie.'
+        : `Face similarity score (${faceMatch.score}/100) is below the required threshold (${KYC_FACE_MATCH_THRESHOLD}/100). Please re-submit with a clearer photo.`;
+    } else {
+      // Face match service unavailable — queue for manual admin review
+      nextStatus = 'PENDING_REVIEW';
+    }
 
     await repos.upsertP2PKycRequest(userId, email, {
       requestId,
       status: nextStatus,
-      legalName,
-      idType,
-      dob,
-      mobile,
-      address,
-      country,
       aadhaarMasked: maskAadhaar(aadhaarDigits),
       aadhaarHash: hashSensitive(aadhaarDigits),
       aadhaarFrontImage: encryptText(aadhaarFrontImage.dataUrl),
@@ -2451,23 +1836,8 @@ app.post('/api/p2p/kyc/submit', requiresP2PUser, async (req, res) => {
       aadhaarLast4: aadhaarDigits.slice(-4),
       faceMatchScore: faceMatch.score,
       faceMatchProvider: faceMatch.provider,
-      rejectionReason,
-      fullName: legalName,
-      mobile,
-      address,
-      country,
-      dob
+      rejectionReason
     });
-
-    // Sync kycStatus to adminUserProfiles so admin user list shows correct badge
-    try {
-      const cols = getCollections();
-      await cols.adminUserProfiles.updateOne(
-        { userId },
-        { $set: { kycStatus: nextStatus, email, updatedAt: new Date() } },
-        { upsert: true }
-      );
-    } catch (_syncErr) { /* non-critical */ }
 
     const kycProfile = buildP2PKycProfileFromCredential(updatedCredential || {});
     if (auditLogService) {
@@ -2547,22 +1917,9 @@ app.get('/api/p2p/wallet', requiresP2PUser, async (req, res) => {
         : {
             USDT: Number(ensured.availableBalance || ensured.balance || 0)
           };
-
-    // Read security deposit from p2pCredentials
-    let securityDeposit = 0;
-    try {
-      const cols = getCollections();
-      const cred = await cols.p2pCredentials.findOne({ email: req.p2pUser.email });
-      if (cred) {
-        const depositLocked = Number(cred?.merchant?.depositLocked || 0);
-        securityDeposit = Number.isFinite(depositLocked) ? depositLocked : 0;
-      }
-    } catch (_) {}
-
     return res.json({
       wallet: {
         ...ensured,
-        securityDeposit,
         depositAddress: depositConfig.depositAddress,
         depositNetwork: depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
         depositNetworks: depositConfig.networks,
@@ -2573,16 +1930,6 @@ app.get('/api/p2p/wallet', requiresP2PUser, async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ message: 'Server error while loading wallet.' });
-  }
-});
-
-// ── /api/wallet/balance — quick available balance for withdraw form ──
-app.get('/api/wallet/balance', requiresP2PUser, async (req, res) => {
-  try {
-    const wallet = await walletService.ensureWallet(req.p2pUser.id, { username: req.p2pUser.username });
-    return res.json({ balance: Number(wallet.availableBalance || wallet.balance || 0), currency: 'USDT' });
-  } catch (_) {
-    return res.json({ balance: 0, currency: 'USDT' });
   }
 });
 
@@ -2600,43 +1947,23 @@ app.get('/api/wallet/summary', requiresP2PUser, async (req, res) => {
             USDT: Number(wallet.availableBalance || wallet.balance || 0)
           };
 
-    // Sum pending withdrawal amounts so we don't show them as "Funding"
-    let pendingWithdrawalSum = 0;
-    try {
-      const allWds = await walletService.listWithdrawalRequests(req.p2pUser.id, { limit: 100 });
-      // pending = not yet sent; approved = admin approved but funds not sent yet — both still "in flight"
-      const inFlightWds = allWds.filter(w => ['pending', 'approved'].includes(String(w.status || '').toLowerCase()));
-      pendingWithdrawalSum = inFlightWds.reduce((sum, w) => sum + Number(w.amount || 0), 0);
-      console.log(`[wallet/summary] userId=${req.p2pUser.id} lockedBalance=${wallet.lockedBalance} inFlightWithdrawals=${pendingWithdrawalSum} count=${inFlightWds.length}`);
-    } catch (err) {
-      console.error('[wallet/summary] pendingWithdrawalSum query failed:', err.message);
-    }
-
-    const lockedTotal  = Number(wallet.lockedBalance || wallet.p2pLocked || 0);
-    // funding = only true P2P escrow, NOT pending withdrawals
-    const fundingOnly  = Math.max(0, lockedTotal - pendingWithdrawalSum);
-    const availBal     = Number(wallet.availableBalance || wallet.balance || 0);
-    // total shown to user = available + p2p-escrow only (pending withdrawals are "gone")
-    const totalForUser = availBal + fundingOnly;
-
     return res.json({
       summary: {
-        total_balance:     totalForUser,
-        available_balance: availBal,
-        locked_balance:    fundingOnly,
-        spot_balance:      availBal,
-        funding_balance:   fundingOnly,
-        pending_withdrawals: pendingWithdrawalSum,
-        asset_balances:    assetBalances,
-        deposit_address:   depositConfig.depositAddress,
-        deposit_network:   depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
-        deposit_networks:  depositConfig.networks
+        total_balance: Number(wallet.totalBalance || 0),
+        available_balance: Number(wallet.availableBalance || wallet.balance || 0),
+        locked_balance: Number(wallet.lockedBalance || wallet.p2pLocked || 0),
+        spot_balance: Number(wallet.availableBalance || wallet.balance || 0),
+        funding_balance: Number(wallet.availableBalance || wallet.balance || 0),
+        asset_balances: assetBalances,
+        deposit_address: depositConfig.depositAddress,
+        deposit_network: depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
+        deposit_networks: depositConfig.networks
       },
       wallet: {
         ...wallet,
-        depositAddress:   depositConfig.depositAddress,
-        depositNetwork:   depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
-        depositNetworks:  depositConfig.networks,
+        depositAddress: depositConfig.depositAddress,
+        depositNetwork: depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
+        depositNetworks: depositConfig.networks,
         assetBalances
       },
       depositConfig,
@@ -2758,18 +2085,6 @@ app.post(
         });
       }
 
-      broadcastAdminDepositEvent({
-        type: 'new_deposit',
-        depositId: deposit.id,
-        userId: deposit.userId,
-        username: deposit.username || req.p2pUser.username,
-        email: deposit.email || req.p2pUser.email,
-        amount: deposit.amount,
-        coin: deposit.coin,
-        network: deposit.network,
-        createdAt: deposit.createdAt || new Date().toISOString()
-      });
-
       return res.status(201).json({
         message: 'Deposit request created. Awaiting admin confirmation.',
         deposit
@@ -2821,12 +2136,6 @@ app.post(
     const requestedNetwork = String(req.body.network || req.body.chain || req.body.blockchain || '').trim();
     const network = normalizeUsdtNetwork(requestedNetwork || 'TRC20');
     const requestIp = getRequestIp(req);
-    const networkFeeMap = { TRC20: 1, BEP20: 0.1, ERC20: 0.2, MORPH: 1 };
-    const fee = req.body.fee != null ? Number(req.body.fee) : (networkFeeMap[network] || 1);
-
-    if (amount < 10) {
-      return res.status(400).json({ message: 'Minimum withdrawal amount is 10 USDT.' });
-    }
 
     if (currency === 'USDT' && !isValidAddressForNetwork(address, network)) {
       return res.status(400).json({
@@ -2835,63 +2144,17 @@ app.post(
     }
 
     try {
-      // Block withdrawal if user has an active or disputed order
-      const activeOrders = await repos.listMyActiveOrders(req.p2pUser.id);
-      const blockingOrder = activeOrders.find(o => ['CREATED', 'PENDING', 'PAYMENT_SENT', 'PAID', 'DISPUTED'].includes(o.status));
-      if (blockingOrder) {
-        const msg = blockingOrder.status === 'DISPUTED'
-          ? 'Withdrawal blocked: you have an ongoing dispute. Resolve it first.'
-          : 'Withdrawal blocked: complete or cancel your active order first.';
-        return res.status(409).json({ message: msg });
-      }
-
       const withdrawal = await walletService.createWithdrawalRequest(req.p2pUser.id, {
         username: req.p2pUser.username,
-        email: req.p2pUser.email || '',
         amount,
         currency,
         address,
         metadata: {
           source: 'api_withdrawals',
           network,
-          fee,
           ipAddress: requestIp,
           userAgent: String(req.headers['user-agent'] || '').trim()
         }
-      });
-
-      if (adminStore && typeof adminStore.createWithdrawalRequest === 'function') {
-        try {
-          await adminStore.createWithdrawalRequest({
-            requestId: withdrawal.requestId || withdrawal.id,
-            userId: req.p2pUser.id,
-            username: req.p2pUser.username || req.p2pUser.email || 'User',
-            amount: withdrawal.amount,
-            currency: withdrawal.currency || currency,
-            coin: withdrawal.currency || currency,
-            network: withdrawal.metadata?.network || network,
-            address: withdrawal.address || address,
-            fee,
-            source: 'assets_withdrawal',
-            createdAt: withdrawal.createdAt
-          });
-        } catch (_adminErr) {
-          // Admin store sync is non-critical — withdrawal already saved; sync will catch up on next admin view
-        }
-      }
-
-      // Notify admin via SSE
-      broadcastAdminWithdrawalEvent({
-        type: 'new_withdrawal',
-        requestId: withdrawal.requestId || withdrawal.id,
-        userId: req.p2pUser.id,
-        username: req.p2pUser.username || req.p2pUser.email || 'User',
-        amount: withdrawal.amount,
-        currency: withdrawal.currency,
-        network: withdrawal.metadata?.network || network,
-        address: withdrawal.address,
-        fee,
-        createdAt: new Date()
       });
 
       if (auditLogService) {
@@ -2909,7 +2172,7 @@ app.post(
       }
 
       return res.status(201).json({
-        message: 'Your withdrawal request has been submitted successfully.',
+        message: 'Withdrawal request created.',
         withdrawal
       });
     } catch (error) {
@@ -2931,11 +2194,7 @@ app.post(
       if (error.status) {
         return res.status(error.status).json({ message: error.message });
       }
-      // MongoDB duplicate key — another pending withdrawal exists
-      if (error.code === 11000 || (error.message && error.message.includes('E11000'))) {
-        return res.status(409).json({ message: 'You already have a pending withdrawal. Please wait for it to be processed.' });
-      }
-      return res.status(500).json({ message: 'Server error while creating withdrawal request.', _debug: String(error.message || error.code || error) });
+      return res.status(500).json({ message: 'Server error while creating withdrawal request.' });
     }
   }
 );
@@ -3005,56 +2264,6 @@ app.post('/api/withdrawals/:requestId/cancel', requiresP2PUser, async (req, res)
 });
 
 app.get('/api/p2p/exchange-ticker', async (req, res) => {
-  const requestedSymbols = String(req.query.symbols || '')
-    .split(',')
-    .map((item) => item.trim().toUpperCase())
-    .filter((item) => /^[A-Z0-9]{5,12}$/.test(item))
-    .slice(0, 20);
-  const symbols = requestedSymbols.length > 0 ? requestedSymbols : DEFAULT_TICKER_SYMBOLS;
-
-  // 1. Try live Binance fetch
-  try {
-    const encodedSymbols = encodeURIComponent(JSON.stringify(symbols));
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-    const response = await fetch(
-      `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodedSymbols}`,
-      { signal: controller.signal }
-    );
-    clearTimeout(timeout);
-    const data = await response.json();
-    if (response.ok && Array.isArray(data) && data.length > 0) {
-      // Update cache with fresh data
-      _tickerCache.data = data.map((item) => ({
-        symbol: item.symbol,
-        lastPrice: Number(item.lastPrice),
-        change24h: Number(item.priceChangePercent),
-        volume24h: Number(item.quoteVolume)
-      }));
-      _tickerCache.updatedAt = Date.now();
-      const ticker = _tickerCache.data.filter(t => symbols.includes(t.symbol));
-      return res.json({ source: 'binance', updatedAt: new Date().toISOString(), ticker });
-    }
-  } catch (_) {}
-
-  // 2. Use server cache (last successful Binance fetch)
-  if (_tickerCache.data && _tickerCache.data.length > 0) {
-    const ticker = _tickerCache.data.filter(t => symbols.includes(t.symbol));
-    if (ticker.length > 0) {
-      return res.json({ source: 'cache', updatedAt: new Date(_tickerCache.updatedAt).toISOString(), ticker });
-    }
-  }
-
-  // 3. Last resort — updated hardcoded fallback
-  return res.json({
-    source: 'fallback',
-    updatedAt: new Date().toISOString(),
-    ticker: createFallbackTickerSnapshot(symbols)
-  });
-});
-
-// API v1 ticker endpoint - used by frontend market pages
-app.get('/api/v1/market/tickers', async (req, res) => {
   const requestedSymbols = String(req.query.symbols || '')
     .split(',')
     .map((item) => item.trim().toUpperCase())
@@ -3327,92 +2536,6 @@ app.get('/api/leads', requiresAdminSession, async (req, res) => {
   }
 });
 
-// ── /api/p2p/ping — merchant heartbeat to track online status ──
-app.post('/api/p2p/ping', requiresP2PUser, async (req, res) => {
-  try {
-    const userId = String(req.p2pUser.id || req.p2pUser.userId || req.p2pUser._id || '').trim();
-    const username = String(req.p2pUser.username || '').trim();
-    if (!userId) return res.json({ ok: false });
-    await repos.updateLastActive(userId, username);
-    return res.json({ ok: true });
-  } catch (_) { return res.json({ ok: false }); }
-});
-
-app.get('/api/p2p/ping', async (req, res) => {
-  try {
-    const user = await getP2PUserFromRequest(req, res);
-    const userId = String(user?.id || user?.userId || '').trim();
-    const username = String(user?.username || '').trim();
-    if (userId && repos) {
-      await repos.updateLastActive(userId, username);
-    }
-  } catch (_) {
-    // Wake-up ping should never surface an error to the client.
-  }
-  return res.json({ ok: true });
-});
-
-// ── /api/p2p/notifications — save & load notification preferences ──
-app.get('/api/p2p/notifications', requiresP2PUser, async (req, res) => {
-  try {
-    const userId = String(req.p2pUser.id || req.p2pUser.userId || req.p2pUser._id || '').trim();
-    const cols = await getCollections();
-    const doc = await cols.adminUserProfiles.findOne({ userId });
-    const prefs = doc?.notifPrefs || {};
-    return res.json(prefs);
-  } catch (e) { return res.json({}); }
-});
-
-app.put('/api/p2p/notifications', requiresP2PUser, async (req, res) => {
-  try {
-    const userId = String(req.p2pUser.id || req.p2pUser.userId || req.p2pUser._id || '').trim();
-    if (!userId) return res.status(400).json({ ok: false });
-    const allowed = ['newOrders','orderUpdates','chat','priceAlerts','email','security'];
-    const update = {};
-    for (const k of allowed) {
-      if (req.body[k] !== undefined) update['notifPrefs.' + k] = !!req.body[k];
-    }
-    if (Object.keys(update).length) {
-      const cols = await getCollections();
-      await cols.adminUserProfiles.updateOne({ userId }, { $set: update }, { upsert: true });
-    }
-    return res.json({ ok: true });
-  } catch (e) { return res.status(500).json({ ok: false }); }
-});
-
-// ── /api/p2p/public — used by p2p-live.js to load buy/sell ads ──
-app.get('/api/p2p/public', async (req, res) => {
-  try {
-    const allOffers = await repos.listOffers({ activeOnly: true, availableOnly: true, excludeDemo: true });
-    const mapAd = (o) => ({
-      id: o.id || o._id,
-      advertiser: safeDisplayName(o.advertiser, o.createdByEmail),
-      price: o.price,
-      availableUsdt: Number(o.available || o.availableAmount || 0),
-      totalUsdt: Number(o.totalAmount || o.available || 0),
-      minLimit: o.minLimit,
-      maxLimit: o.maxLimit,
-      paymentMethods: Array.isArray(o.payments) ? o.payments : (o.payMethod ? [o.payMethod] : []),
-      completionRate: o.completionRate || 100,
-      totalOrders: o.totalOrders || 0,
-      status: o.status === 'ACTIVE' ? 'active' : 'paused',
-      createdAt: o.createdAt,
-      asset: o.asset || 'USDT',
-      side: o.side,
-      createdByUserId: o.createdByUserId,
-      merchantBadge: o.merchantBadge,
-      releaseTime: o.releaseTime || '15',
-      onlineStatus: (o.lastActiveAt && (Date.now() - new Date(o.lastActiveAt).getTime()) < 3600000) ? 'online' : 'offline', // merchants: 1 hour
-    });
-    const sell_ads = allOffers.filter(o => o.side === 'sell').map(mapAd).sort((a, b) => a.price - b.price);
-    const buy_ads  = allOffers.filter(o => o.side === 'buy').map(mapAd).sort((a, b) => a.price - b.price);
-    const payment_methods = ['UPI','PhonePe','Paytm','Google Pay','IMPS','Bank Transfer','Digital eRupee','NEFT','RTGS'];
-    return res.json({ status: 'success', data: { sell_ads, buy_ads, payment_methods } });
-  } catch (err) {
-    return res.status(500).json({ status: 'error', message: 'Failed to load P2P public data.' });
-  }
-});
-
 app.get('/api/p2p/offers', async (req, res) => {
   const side = String(req.query.side || 'buy').toLowerCase();
   const asset = String(req.query.asset || 'USDT').toUpperCase();
@@ -3436,24 +2559,7 @@ app.get('/api/p2p/offers', async (req, res) => {
       escrowBackedOnly: true,
       merchantOwnedOnly: true
     });
-    const merchantBadgeLookup = buildApprovedMerchantBadgeLookup();
-
-    // Get blocked user IDs for the logged-in user (if authenticated)
-    let blockedSet = new Set();
-    try {
-      const sessionToken = req.cookies && req.cookies[P2P_USER_COOKIE_NAME];
-      if (sessionToken) {
-        const session = await repos.getP2PUserSession(sessionToken);
-        if (session && (session.userId || session.id)) {
-          const viewerId = session.userId || session.id;
-          const blocked = await repos.getBlockedUsers(viewerId);
-          blockedSet = new Set(blocked.map((b) => b.blockedId));
-        }
-      }
-    } catch (_) { /* non-fatal — skip filter if session check fails */ }
-
     const filtered = allOffers
-      .filter((offer) => !blockedSet.has(String(offer.createdByUserId || '')))
       .filter((offer) => {
         if (!payment) {
           return true;
@@ -3472,52 +2578,26 @@ app.get('/api/p2p/offers', async (req, res) => {
         }
         return amount >= offer.minLimit && amount <= offer.maxLimit;
       })
-      .sort((a, b) => a.price - b.price); // lowest price first for both sides
+      .sort((a, b) => {
+        if (normalizedSide === 'buy') {
+          return a.price - b.price;
+        }
+        return b.price - a.price;
+      });
 
     const totalCount = filtered.length;
     const paginated = filtered.slice(pageOffset, pageOffset + pageSize);
 
-    // Keep list responses light. Offer cards already fall back to offer-level metrics,
-    // so avoid per-card reputation DB lookups here to reduce mobile card load time.
-    const enriched = paginated.map((offer) => {
-      const userId = String(offer.createdByUserId || '').trim();
-      const advertiserName = String(offer.advertiser || '').trim();
-      const merchantBadge = resolveApprovedMerchantBadge(
-        merchantBadgeLookup,
-        userId,
-        advertiserName,
-        offer.merchantBadge || null
-      );
-      const merchantBadges = resolveApprovedMerchantBadges(
-        merchantBadgeLookup,
-        userId,
-        advertiserName,
-        offer.merchantBadges || (merchantBadge ? [merchantBadge] : null)
-      );
-      // Merchants (have active ads) → 1 hour window; normal users → 5 min
-      const onlineStatus =
-        offer.lastActiveAt && (Date.now() - new Date(offer.lastActiveAt).getTime()) < 3600000
-          ? 'online'
-          : 'offline';
-
-      // Compute baseOrders server-side for offers that don't have it stored
-      const _baseCounts = [40, 113, 370, 405, 88, 215, 312, 178];
-      const _advStr = advertiserName || userId || String(offer.id || '');
-      const _baseIdx = _advStr.split('').reduce(function(a, c) { return a + c.charCodeAt(0); }, 0) % _baseCounts.length;
-      const baseOrders = offer.baseOrders != null ? offer.baseOrders : _baseCounts[_baseIdx];
-
-      // Include seller's available balance for display on order flow page
-      let sellerAvailableBalance = Number(offer.availableAmount || offer.available || 0);
-      return {
-        ...offer,
-        advertiser: safeDisplayName(offer.advertiser, offer.createdByEmail),
-        merchantBadge,
-        merchantBadges,
-        baseOrders,
-        onlineStatus,
-        sellerAvailableBalance
-      };
-    });
+    // Enrich each offer with advertiser reputation
+    const enriched = await Promise.all(paginated.map(async (offer) => {
+      try {
+        const userId = offer.createdByUserId;
+        if (!userId) return offer;
+        const rep = await repos.getUserReputation(userId);
+        if (!rep) return offer;
+        return { ...offer, reputation: rep };
+      } catch (_) { return offer; }
+    }));
 
     return res.json({
       side: normalizedSide,
@@ -3619,61 +2699,19 @@ app.get('/api/p2p/ads/:adId', async (req, res) => {
   }
 });
 
-// Expire order (called by frontend timer when countdown hits 0)
-app.post('/api/p2p/orders/:orderId/expire', requiresP2PUser, async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const cols = getCollections();
-    const order = await cols.p2pOrders.findOne({ id: orderId });
-    if (!order) return res.status(404).json({ message: 'Order not found.' });
-    const status = String(order.status || '').toUpperCase();
-    // Only expire if still in created/pending state
-    if (!['CREATED', 'PENDING'].includes(status)) {
-      return res.json({ success: true, order: normalizeOrderState(order) });
-    }
-    const now = new Date();
-    const expireMsg = { id: `msg_${Date.now()}`, sender: 'System', role: 'system', messageType: 'system', isSystem: true, text: 'Order expired because the buyer did not complete payment in time.', createdAt: now };
-    await cols.p2pOrders.updateOne({ id: orderId }, { $set: { status: 'EXPIRED', updatedAt: now, cancelledAt: now }, $push: { messages: expireMsg } });
-    const updated = await cols.p2pOrders.findOne({ id: orderId });
-    broadcastOrderEvent(orderId, 'order_update', { order: normalizeOrderState(updated) });
-    return res.json({ success: true, order: normalizeOrderState(updated) });
-  } catch (err) {
-    return res.status(500).json({ message: 'Failed to expire order.' });
-  }
-});
-
 // Convenience: mark order paid
 app.post('/api/p2p/orders/:orderId/mark-paid', requiresP2PUser, async (req, res) => {
   try {
     const updatedOrder = await walletService.markOrderPaid(req.params.orderId, req.p2pUser);
     const normalizedOrder = normalizeOrderState(updatedOrder);
-    const normalizedMessages = toClientMessages(updatedOrder.messages || []);
-    const participantPayload = {
-      order: normalizedOrder,
-      orderId: normalizedOrder.id,
-      reference: normalizedOrder.reference,
-      status: normalizedOrder.status,
-      updatedAt: normalizedOrder.updatedAt
-    };
     broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
-    broadcastOrderEvent(updatedOrder.id, 'message_update', { messages: normalizedMessages });
-    broadcastParticipantOrderEvent(updatedOrder, 'orders_refresh', participantPayload);
-    // Notify seller to release crypto
-    if (p2pEmailService) {
-      const sellerParticipant = (updatedOrder.participants || []).find(p => p.role === 'seller');
-      if (sellerParticipant?.email) {
-        const emailOrder = {
-          id: updatedOrder.id,
-          cryptoAmount: updatedOrder.cryptoAmount,
-          asset: updatedOrder.asset || 'USDT',
-          fiatAmount: updatedOrder.fiatAmount,
-          fiatCurrency: updatedOrder.fiatCurrency || 'INR',
-          createdAt: updatedOrder.createdAt
-        };
-        p2pEmailService.sendOrderUpdate(sellerParticipant.email, emailOrder, 'payment_sent_seller').catch(() => {});
-      }
-    }
-    return res.json({ success: true, order: { ...normalizedOrder, messages: normalizedMessages }, messages: normalizedMessages });
+    // Push real-time status update to both buyer and seller (try both field names)
+    const pushPayload = { orderId: updatedOrder.id, reference: updatedOrder.reference, status: updatedOrder.status };
+    const sellId = updatedOrder.sellerUserId || updatedOrder.sellerId;
+    const buyId  = updatedOrder.buyerUserId  || updatedOrder.buyerId;
+    if (sellId) broadcastUserEvent(sellId, 'order_updated', pushPayload);
+    if (buyId && buyId !== sellId) broadcastUserEvent(buyId, 'order_updated', pushPayload);
+    return res.json({ success: true, order: normalizedOrder });
   } catch (error) {
     return res.status(500).json({ message: error.message || 'Server error.' });
   }
@@ -3684,18 +2722,14 @@ app.post('/api/p2p/orders/:orderId/cancel', requiresP2PUser, async (req, res) =>
   try {
     const updatedOrder = await walletService.cancelOrder(req.params.orderId, req.p2pUser, 'CANCELLED');
     const normalizedOrder = normalizeOrderState(updatedOrder);
-    const normalizedMessages = toClientMessages(updatedOrder.messages || []);
-    const participantPayload = {
-      order: normalizedOrder,
-      orderId: normalizedOrder.id,
-      reference: normalizedOrder.reference,
-      status: normalizedOrder.status,
-      updatedAt: normalizedOrder.updatedAt
-    };
     broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
-    broadcastOrderEvent(updatedOrder.id, 'message_update', { messages: normalizedMessages });
-    broadcastParticipantOrderEvent(updatedOrder, 'orders_refresh', participantPayload);
-    return res.json({ success: true, order: { ...normalizedOrder, messages: normalizedMessages }, messages: normalizedMessages });
+    // Push real-time status update to both buyer and seller (try both field names)
+    const pushPayload = { orderId: updatedOrder.id, reference: updatedOrder.reference, status: updatedOrder.status };
+    const sellId = updatedOrder.sellerUserId || updatedOrder.sellerId;
+    const buyId  = updatedOrder.buyerUserId  || updatedOrder.buyerId;
+    if (sellId) broadcastUserEvent(sellId, 'order_updated', pushPayload);
+    if (buyId && buyId !== sellId) broadcastUserEvent(buyId, 'order_updated', pushPayload);
+    return res.json({ success: true, order: normalizedOrder });
   } catch (error) {
     return res.status(500).json({ message: error.message || 'Server error.' });
   }
@@ -3703,99 +2737,11 @@ app.post('/api/p2p/orders/:orderId/cancel', requiresP2PUser, async (req, res) =>
 
 async function createP2PAdController(req, res) {
   try {
-    const userId = String(req.p2pUser.id || '').trim();
-    // Always fetch fresh username from DB — session may be stale
-    let username = String(req.p2pUser.username || '').trim();
-    try {
-      const cols = getCollections();
-      const freshCred = await cols.p2pCredentials.findOne(
-        { $or: [{ userId }, { email: req.p2pUser.email }] },
-        { projection: { username: 1 } }
-      );
-      if (freshCred && freshCred.username && !freshCred.username.includes('@')) {
-        username = freshCred.username;
-      }
-    } catch (_) {}
-    const merchantAccess = await getMerchantAccessState({
-      userId: req.p2pUser.id,
-      username: req.p2pUser.username,
-      email: req.p2pUser.email
-    });
-
-    if (merchantAccess.depositLocked < MERCHANT_ACTIVATION_DEPOSIT) {
-      return res.status(403).json({
-        message: `You need to lock at least ${MERCHANT_ACTIVATION_DEPOSIT} USDT as security deposit to post ads.`,
-        code: 'SECURITY_DEPOSIT_REQUIRED',
-        required: MERCHANT_ACTIVATION_DEPOSIT,
-        current: merchantAccess.depositLocked
-      });
-    }
-    // No admin approval required — any merchant with deposit can post instantly
-
-    // Balance check: user must have USDT balance > 0
-    try {
-      const wallet = await walletService.getWallet(userId);
-      const available = Number(wallet?.availableBalance ?? wallet?.balance ?? 0);
-      if (available <= 0) {
-        return res.status(400).json({ message: 'Insufficient balance. Please deposit USDT before posting an ad.' });
-      }
-    } catch (_) {}
-
-    // Must have at least one payment method
-    const cols = getCollections();
-    try {
-      const userPms = await repos.listPaymentMethods(userId);
-      if (!userPms || userPms.length === 0) {
-        return res.status(400).json({ message: 'Add a payment method before posting an ad.' });
-      }
-    } catch (_) {}
-
-    // Enforce 1 buy + 1 sell limit per merchant
-    // req.body.type / req.body.side / req.body.adType all accepted
-    const rawAdType = String(req.body.type || req.body.adType || req.body.side || '').toLowerCase();
-    if (!rawAdType || !['buy', 'sell'].includes(rawAdType)) {
-      return res.status(400).json({ message: 'Ad type must be buy or sell.' });
-    }
-    // Ads are stored with side = OPPOSITE of adType (taker's perspective):
-    //   SELL ad → side:'buy'  (buyer can take it)
-    //   BUY  ad → side:'sell' (seller can take it)
-    const storedSide = rawAdType === 'sell' ? 'buy' : 'sell';
-    const existingOfSide = await cols.p2pOffers.countDocuments({
-      $or: [{ createdByUserId: userId }, { advertiser: username }],
-      side: storedSide,
-      status: { $ne: 'DELETED' }
-    });
-    if (existingOfSide >= 1) {
-      return res.status(400).json({ message: `You already have an active ${rawAdType} ad. Delete it first before posting a new one.` });
-    }
-
     const savedOffer = await walletService.createEscrowAd({
-      actor: { ...req.p2pUser, username }, // use fresh username from DB
+      actor: req.p2pUser,
       offerId: await createOfferId(),
       payload: req.body || {}
     });
-
-    // Mark seller as online immediately so buyers see Online status right away
-    try { await repos.updateLastActive(userId, username); } catch (_) {}
-
-    // If this merchant already has an approved badge, stamp it on the new offer immediately
-    try {
-      const cols = getCollections();
-      const userId = String(req.p2pUser.id || '').trim();
-      const username = String(req.p2pUser.username || '').trim();
-      let approvedBadge = null;
-      for (const [, app] of merchantApplications) {
-        if (app.status === 'approved' && app.assignedBadge) {
-          if ((userId && String(app.userId) === userId) || (username && app.username === username)) {
-            approvedBadge = app.assignedBadge;
-            break;
-          }
-        }
-      }
-      if (approvedBadge && savedOffer?.id) {
-        await cols.p2pOffers.updateOne({ id: savedOffer.id }, { $set: { merchantBadge: approvedBadge } });
-      }
-    } catch (_) {}
 
     return res.status(201).json({
       message: 'Ad created successfully.',
@@ -3845,7 +2791,7 @@ app.get('/api/p2p/my-ads', requiresP2PUser, async (req, res) => {
   try {
     const userId = req.p2pUser.userId;
     const allOffers = await repos.listOffers({ excludeDemo: true });
-    const mine = allOffers.filter(o => o.createdByUserId === userId && o.status !== 'DELETED');
+    const mine = allOffers.filter(o => o.createdByUserId === userId);
     return res.json({ offers: mine });
   } catch (err) {
     return res.status(500).json({ message: 'Server error.' });
@@ -3861,12 +2807,12 @@ app.patch('/api/p2p/offers/:offerId', requiresP2PUser, async (req, res) => {
     if (!offer) return res.status(404).json({ message: 'Offer not found.' });
     if (offer.createdByUserId !== userId) return res.status(403).json({ message: 'Not your ad.' });
 
-    const { price, minLimit, maxLimit, payments, status, remark, totalAmount, releaseTime } = req.body;
+    const { price, minLimit, maxLimit, payments, status, remark } = req.body;
     // Validate status transitions
     if (status && !['ACTIVE', 'PAUSED'].includes(status)) {
       return res.status(400).json({ message: 'Status must be ACTIVE or PAUSED.' });
     }
-    const updated = await repos.updateOffer(offerId, userId, { price, minLimit, maxLimit, payments, status, remark, totalAmount, releaseTime });
+    const updated = await repos.updateOffer(offerId, userId, { price, minLimit, maxLimit, payments, status, remark });
     if (!updated) return res.status(404).json({ message: 'Update failed.' });
     return res.json({ offer: updated });
   } catch (err) {
@@ -3894,68 +2840,6 @@ app.delete('/api/p2p/offers/:offerId', requiresP2PUser, async (req, res) => {
   }
 });
 
-// ── Security Deposit: lock USDT as security deposit (200 USDT min to post ads, 500 for badge) ──
-app.post('/api/p2p/security-deposit', requiresP2PUser, async (req, res) => {
-  try {
-    const merchantAccess = await getMerchantAccessState({
-      userId: req.p2pUser.id,
-      username: req.p2pUser.username,
-      email: req.p2pUser.email
-    });
-    const currentDeposit = Number(merchantAccess.depositLocked || 0);
-    const lockAmount = Number(req.body?.amount) || 0;
-    if (!Number.isFinite(lockAmount) || lockAmount <= 0) {
-      return res.status(400).json({ success: false, message: 'Enter a valid security deposit amount.' });
-    }
-    if (currentDeposit + lockAmount < MERCHANT_ACTIVATION_DEPOSIT) {
-      return res.status(400).json({
-        success: false,
-        message: `Lock at least ${MERCHANT_ACTIVATION_DEPOSIT} USDT total to continue.`,
-        required: MERCHANT_ACTIVATION_DEPOSIT,
-        current: currentDeposit
-      });
-    }
-    const activation = await walletService.activateMerchant({
-      actor: req.p2pUser,
-      depositAmount: lockAmount
-    });
-    return res.json({
-      success: true,
-      message: `${lockAmount} USDT locked as security deposit.`,
-      securityDeposit: activation.merchant?.depositLocked || lockAmount,
-      wallet: activation.wallet,
-      canApplyMerchant: (activation.merchant?.depositLocked || 0) >= MERCHANT_ACTIVATION_DEPOSIT,
-      canPostAds: false
-    });
-  } catch (error) {
-    const knownStatus = Number(error?.status || 0);
-    if (knownStatus >= 400 && knownStatus < 500) {
-      return res.status(knownStatus).json({ success: false, message: String(error.message || 'Failed.'), code: String(error.code || '') });
-    }
-    return res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
-
-// ── Security Deposit: get current deposit status ──
-app.get('/api/p2p/security-deposit', requiresP2PUser, async (req, res) => {
-  try {
-    const merchantAccess = await getMerchantAccessState({
-      userId: req.p2pUser.id,
-      username: req.p2pUser.username,
-      email: req.p2pUser.email
-    });
-    return res.json({
-      success: true,
-      securityDeposit: merchantAccess.depositLocked,
-      canApplyMerchant: merchantAccess.canApplyMerchant,
-      canPostAds: merchantAccess.canPostAds,
-      badgeEligible: merchantAccess.badgeEligible
-    });
-  } catch (_) {
-    return res.json({ success: true, securityDeposit: 0, canApplyMerchant: false, canPostAds: false, badgeEligible: false });
-  }
-});
-
 app.post('/api/merchant/activate', requiresP2PUser, async (req, res) => {
   try {
     const activation = await walletService.activateMerchant({
@@ -3965,11 +2849,9 @@ app.post('/api/merchant/activate', requiresP2PUser, async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Security deposit locked successfully. Submit your merchant application for admin approval.`,
+      message: 'Merchant activated successfully.',
       merchant: activation.merchant,
-      wallet: activation.wallet,
-      canApplyMerchant: true,
-      canPostAds: false
+      wallet: activation.wallet
     });
   } catch (error) {
     const knownStatus = Number(error?.status || 0);
@@ -3987,649 +2869,56 @@ app.post('/api/merchant/activate', requiresP2PUser, async (req, res) => {
   }
 });
 
-// ── Merchant Application: User submits application ──
-app.post('/api/merchant/apply', requiresP2PUser, async (req, res) => {
-  try {
-    const { photoBase64, currency, socialAccounts } = req.body || {};
-    const userId = req.p2pUser.id;
-    const username = req.p2pUser.username;
-    const email = req.p2pUser.email;
-
-    // Validate required fields
-    if (!photoBase64) return res.status(400).json({ success: false, message: 'ID photo is required.' });
-    if (!currency) return res.status(400).json({ success: false, message: 'Please select a currency.' });
-    const social = socialAccounts || {};
-    if (!social.twitter && !social.telegram && !social.instagram) {
-      return res.status(400).json({ success: false, message: 'At least one social media account is required.' });
-    }
-
-    const merchantAccess = await getMerchantAccessState({
-      userId,
-      username,
-      email
-    });
-    if (merchantAccess.depositLocked < MERCHANT_ACTIVATION_DEPOSIT) {
-      return res.status(400).json({
-        success: false,
-        message: `Lock ${MERCHANT_ACTIVATION_DEPOSIT} USDT security deposit before applying.`
-      });
-    }
-    if (merchantAccess.status === 'approved') {
-      return res.status(400).json({ success: false, message: 'Your merchant account is already approved.' });
-    }
-
-    // Check if already applied
-    for (const [, app] of merchantApplications) {
-      if (app.userId === userId && app.status === 'pending') {
-        return res.status(400).json({ success: false, message: 'You already have a pending merchant application.' });
-      }
-    }
-
-    const id = `MRC-${String(merchantAppCounter++).padStart(5, '0')}`;
-    const application = {
-      id,
-      userId,
-      username,
-      email,
-      photoBase64: photoBase64 || '',   // base64 data URL of ID photo
-      currency: currency || '',          // preferred fiat currency
-      socialAccounts: {                  // social media handles
-        twitter: social.twitter || '',
-        telegram: social.telegram || '',
-        instagram: social.instagram || ''
-      },
-      status: 'pending', // pending | approved | rejected
-      assignedBadge: null, // 1 = Verified, 2 = Pro, 3 = Elite
-      submittedAt: new Date().toISOString(),
-      reviewedAt: null
-    };
-    merchantApplications.set(id, application);
-    await saveMerchantApp(application);
-
-    return res.json({ success: true, message: 'Application submitted! Admin will review within 2-5 business days.', applicationId: id });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Server error while submitting application.' });
-  }
+// ── GET /api/p2p/ping — no auth, no DB, instant server health check ────────
+app.get('/api/p2p/ping', (req, res) => {
+  res.json({ ok: true, dbReady: !!repos, ts: Date.now() });
 });
 
-// ── Admin: Live P2P Trades ────────────────────────────────────────────────────
-app.get('/api/admin/p2p/live-trades', requiresAdminSession, async (req, res) => {
-  try {
-    const limit = Math.min(Number(req.query.limit || 100), 200);
-    const orders = await repos.listP2PLiveOrders({ limit });
-    const statusCounts = {};
-    orders.forEach(o => {
-      const s = String(o.status || 'UNKNOWN').toUpperCase();
-      statusCounts[s] = (statusCounts[s] || 0) + 1;
-    });
-    return res.json({ total: orders.length, statusCounts, orders });
-  } catch (err) {
-    console.error('[admin/live-trades]', err);
-    return res.status(500).json({ message: 'Failed to load live trades.' });
-  }
-});
-
-// ── Admin: P2P Release Escrow (direct) ────────────────────────────────────────
-app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, async (req, res) => {
-  try {
-    const orderId = String(req.params.orderId || '').trim();
-    const { p2pOrders, wallets } = getCollections();
-    const now = Date.now();
-    const adminLabel = process.env.ADMIN_EMAIL || 'admin';
-
-    const releaseTo = String(req.body?.releaseTo || 'buyer').toLowerCase() === 'seller' ? 'seller' : 'buyer';
-
-    // Atomic: only transition if status is disputable — prevents double-release
-    const claimResult = await p2pOrders.findOneAndUpdate(
-      { id: orderId, status: { $in: ['ESCROW_LOCKED', 'DISPUTE', 'ESCROW_HELD', 'DISPUTED'] } },
-      { $set: { status: 'RELEASING', updatedAt: now } },
-      { returnDocument: 'after' }
-    );
-    const order = claimResult?.value ?? claimResult;
-    if (!order) {
-      // Could not claim — either doesn't exist or already released
-      const existing = await p2pOrders.findOne({ id: orderId });
-      if (!existing) return res.status(404).json({ message: 'Order not found.' });
-      return res.status(409).json({ message: `Cannot release order in status "${existing.status}". Already released or not eligible.` });
-    }
-
-    // Credit the right party
-    const asset = String(order.asset || 'USDT');
-    const amount = Number(order.assetAmount || order.escrowAmount || 0);
-    const recipientId = releaseTo === 'seller' ? String(order.sellerUserId || '') : String(order.buyerUserId || '');
-    if (recipientId && amount > 0) {
-      await wallets.updateOne(
-        { userId: recipientId },
-        { $inc: { [`balances.${asset}`]: amount }, $set: { updatedAt: now } },
-        { upsert: true }
-      );
-    }
-
-    const releaseMsg = releaseTo === 'seller'
-      ? 'Escrow released by admin. Funds credited to seller.'
-      : 'Escrow released by admin. Funds credited to buyer.';
-
-    // Finalize order status
-    await p2pOrders.updateOne({ id: orderId }, {
-      $set: { status: 'RELEASED', releasedAt: now, releasedByAdmin: adminLabel, releasedTo: releaseTo, updatedAt: now },
-      $push: { messages: { id: 'msg_' + now + '_release', sender: 'system', senderRole: 'system',
-        text: releaseMsg, createdAt: now } }
-    });
-    const updated = await p2pOrders.findOne({ id: orderId });
-    return res.json({ message: 'Escrow released.', order: updated });
-  } catch (err) {
-    console.error('[admin-release]', err);
-    return res.status(500).json({ message: err.message || 'Server error.' });
-  }
-});
-
-// ── Admin: Get P2P Order Chat Messages ────────────────────────────────────────
-app.get('/api/admin/p2p/orders/:orderId/chat', requiresAdminSession, async (req, res) => {
-  try {
-    const orderId = String(req.params.orderId || '').trim();
-    const { p2pOrders } = getCollections();
-    const order = await p2pOrders.findOne({ id: orderId });
-    if (!order) return res.status(404).json({ message: 'Order not found.' });
-    const messages = Array.isArray(order.messages) ? order.messages : [];
-    return res.json({
-      orderId,
-      status: order.status,
-      buyerUsername:  order.buyerUsername  || order.buyerUserId  || '',
-      sellerUsername: order.sellerUsername || order.sellerUserId || '',
-      messages
-    });
-  } catch (err) {
-    return res.status(500).json({ message: err.message || 'Server error.' });
-  }
-});
-
-// ── Admin: P2P Dispute — Admin Reply ──────────────────────────────────────────
-app.post('/api/admin/p2p/orders/:orderId/admin-reply', requiresAdminSession, async (req, res) => {
-  try {
-    const orderId = String(req.params.orderId || '').trim();
-    const message = String(req.body?.message || '').trim();
-    if (!message) return res.status(400).json({ message: 'Message is required.' });
-    const { p2pOrders } = getCollections();
-    const order = await p2pOrders.findOne({ id: orderId });
-    if (!order) return res.status(404).json({ message: 'Order not found.' });
-    const now = Date.now();
-    const adminName = String(process.env.ADMIN_NAME || process.env.ADMIN_EMAIL || 'Support').split('@')[0];
-    const msg = {
-      id: 'msg_' + now + '_admin',
-      sender: adminName,
-      senderRole: 'admin',
-      text: message,
-      createdAt: now
-    };
-    await p2pOrders.updateOne({ id: orderId }, { $push: { messages: msg }, $set: { updatedAt: now } });
-    const updated = await p2pOrders.findOne({ id: orderId });
-    return res.json({ message: 'Reply sent.', order: updated });
-  } catch (err) {
-    console.error('[admin-reply]', err);
-    return res.status(500).json({ message: err.message || 'Server error.' });
-  }
-});
-
-// ── Merchant Application: Admin list all ──
-app.get('/api/admin/merchant-applications', requiresAdminSession, (req, res) => {
-  const list = Array.from(merchantApplications.values()).sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-  return res.json({ success: true, applications: list });
-});
-
-// ── Admin: Fix security deposits for all approved merchants ──
-app.post('/api/admin/merchant-applications/fix-deposits', requiresAdminSession, async (req, res) => {
-  try {
-    const cols = getCollections();
-    let fixed = 0, skipped = 0;
-    for (const [, app] of merchantApplications) {
-      if (app.status !== 'approved') { skipped++; continue; }
-      const email = String(app.email || '').trim().toLowerCase();
-      if (!email) { skipped++; continue; }
-      const cred = await cols.p2pCredentials.findOne({ email });
-      const current = Number(cred?.merchant?.depositLocked || 0);
-      const target = _getBadgesArray(app).length > 0 ? MERCHANT_BADGE_MIN_DEPOSIT : MERCHANT_ACTIVATION_DEPOSIT;
-      if (current >= target) { skipped++; continue; }
-      await cols.p2pCredentials.updateOne(
-        { email },
-        { $set: { 'merchant.depositLocked': target, 'merchant.isMerchant': true, 'merchant.activatedAt': new Date() } },
-        { upsert: true }
-      );
-      fixed++;
-    }
-    return res.json({ success: true, fixed, skipped });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// ── Admin: Cap all merchant wallet balances to a max amount ──
-app.post('/api/admin/wallets/cap-merchant-balances', requiresAdminSession, async (req, res) => {
-  try {
-    const capAmount = Math.max(0, Number(req.body.capAmount || 500));
-    const { wallets, p2pCredentials } = getCollections();
-    // Get all merchant userIds
-    const merchants = await p2pCredentials.find({ isMerchant: true }, { projection: { userId: 1, email: 1 } }).toArray();
-    let capped = 0, skipped = 0;
-    for (const m of merchants) {
-      const uid = String(m.userId || '').trim();
-      if (!uid) { skipped++; continue; }
-      const wallet = await wallets.findOne({ userId: uid });
-      if (!wallet) { skipped++; continue; }
-      const current = Number(wallet.availableBalance || wallet.balance || 0);
-      if (current <= capAmount) { skipped++; continue; }
-      const diff = current - capAmount;
-      await wallets.updateOne(
-        { userId: uid },
-        { $set: { availableBalance: capAmount, balance: capAmount, updatedAt: new Date() },
-          $inc: { totalDeducted: diff } }
-      );
-      capped++;
-    }
-    return res.json({ success: true, capped, skipped, capAmount });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-// ── Merchant Application: Admin assign badge ──
-app.post('/api/admin/merchant-applications/:id/badge', requiresAdminSession, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { badge, action } = req.body; // badge: 1|2|3, action: 'approve'|'reject'
-
-    let app = merchantApplications.get(id);
-    if (!app) {
-      // Fallback: load from MongoDB if not in memory (e.g. server restarted mid-session)
-      try {
-        const collections = getCollections();
-        const doc = await collections.merchantApplications.findOne({ id });
-        if (doc) { merchantApplications.set(id, doc); app = doc; }
-      } catch (_) {}
-    }
-    if (!app) return res.status(404).json({ success: false, message: 'Application not found.' });
-
-    if (action === 'reject') {
-      app.status = 'rejected';
-      app.assignedBadge = null;
-      app.reviewedAt = new Date().toISOString();
-      merchantApplications.set(id, app);
-      await saveMerchantApp(app);
-      // Remove badge from all offers for this merchant
-      try {
-        const cols = getCollections();
-        const matchQ = { $or: [] };
-        if (app.userId) matchQ.$or.push({ createdByUserId: String(app.userId) });
-        if (app.username) matchQ.$or.push({ advertiser: app.username });
-        if (matchQ.$or.length) {
-          await cols.p2pOffers.updateMany(matchQ, { $unset: { merchantBadge: '' } });
-        }
-      } catch (_) {}
-      return res.json({ success: true, message: 'Application rejected.' });
-    }
-
-    const badgeRaw = String(badge ?? '').trim();
-    if (action === 'approve' && !badgeRaw) {
-      app.status = 'approved';
-      app.assignedBadge = null;
-      app.reviewedAt = new Date().toISOString();
-      merchantApplications.set(id, app);
-      await saveMerchantApp(app);
-      try {
-        const cols = getCollections();
-        const matchQ = { $or: [] };
-        if (app.userId) matchQ.$or.push({ createdByUserId: String(app.userId) });
-        if (app.username) matchQ.$or.push({ advertiser: app.username });
-        if (matchQ.$or.length) {
-          await cols.p2pOffers.updateMany(matchQ, { $unset: { merchantBadge: '' } });
-        }
-      } catch (_) {}
-      return res.json({ success: true, message: `${app.username} approved as merchant without badge.`, application: app });
-    }
-
-    const badgeNum = Number(badge);
-    if (![1, 2, 3, 4].includes(badgeNum)) {
-      return res.status(400).json({ success: false, message: 'Badge must be 1, 2, 3, or 4.' });
-    }
-
-    app.status = 'approved';
-    const _prevBadges = _getBadgesArray(app);
-    if (!_prevBadges.includes(badgeNum)) _prevBadges.push(badgeNum);
-    app.assignedBadges = _prevBadges;
-    app.assignedBadge = _prevBadges[_prevBadges.length - 1];
-    app.reviewedAt = new Date().toISOString();
-    merchantApplications.set(id, app);
-    await saveMerchantApp(app);
-
-    // Stamp badges onto all of this merchant's offer documents so buyers always see them
-    try {
-      const cols = getCollections();
-      const matchQ = { $or: [] };
-      if (app.userId) matchQ.$or.push({ createdByUserId: String(app.userId) });
-      if (app.username) matchQ.$or.push({ advertiser: app.username });
-      if (matchQ.$or.length) {
-        await cols.p2pOffers.updateMany(matchQ, { $set: { merchantBadge: badgeNum, merchantBadges: _prevBadges } });
-      }
-    } catch (_) {}
-
-    // Ensure security deposit reflects badge eligibility (min 500 USDT)
-    try {
-      const userEmail = app.email || '';
-      if (userEmail) {
-        const cols = getCollections();
-        const cred = await cols.p2pCredentials.findOne({ email: userEmail });
-        const currentDep = Number(cred?.merchant?.depositLocked || 0);
-        if (currentDep < MERCHANT_BADGE_MIN_DEPOSIT) {
-          await cols.p2pCredentials.updateOne(
-            { email: userEmail },
-            { $set: { 'merchant.depositLocked': MERCHANT_BADGE_MIN_DEPOSIT, 'merchant.activatedAt': new Date() } }
-          );
-        }
-      }
-    } catch (_) {}
-
-    return res.json({ success: true, message: `Badge ${badgeNum} assigned to ${app.username}.`, application: app });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
-
-// ── Admin: Direct merchant badge assign/revoke for any user ──
-app.post('/api/admin/users/:userId/merchant-badge', requiresAdminSession, async (req, res) => {
-  try {
-    const targetUserId = String(req.params.userId || '').trim();
-    const { badge, action } = req.body; // badge: 1|2|3, action: 'assign'|'revoke'
-
-    if (!targetUserId) return res.status(400).json({ success: false, message: 'userId required.' });
-
-    // Look up user to get username/email
-    let username = targetUserId;
-    let email = '';
-    try {
-      const cols = getCollections();
-      const userDoc = await cols.users.findOne({ userId: targetUserId });
-      if (userDoc) { username = userDoc.username || userDoc.email || targetUserId; email = userDoc.email || ''; }
-    } catch (_) {}
-
-    if (action === 'revoke') {
-      // Mark any approved applications for this user as rejected
-      for (const [appId, app] of merchantApplications) {
-        if (String(app.userId) === targetUserId && app.status === 'approved') {
-          app.status = 'rejected';
-          app.assignedBadge = null;
-          app.reviewedAt = new Date().toISOString();
-          merchantApplications.set(appId, app);
-          await saveMerchantApp(app);
-        }
-      }
-      // Remove badge from all their offers
-      try {
-        const cols = getCollections();
-        await cols.p2pOffers.updateMany(
-          { $or: [{ createdByUserId: targetUserId }, { advertiser: username }] },
-          { $unset: { merchantBadge: '' } }
-        );
-      } catch (_) {}
-      return res.json({ success: true, message: `Merchant badge revoked for ${username}.` });
-    }
-
-    // Assign badge
-    const badgeNum = Number(badge);
-    if (![1, 2, 3, 4].includes(badgeNum)) return res.status(400).json({ success: false, message: 'Badge must be 1, 2, 3, or 4.' });
-
-    // Find existing application or create a direct-assign record
-    let existingApp = null;
-    for (const [, app] of merchantApplications) {
-      if (String(app.userId) === targetUserId && app.status === 'approved') { existingApp = app; break; }
-    }
-    if (!existingApp) {
-      for (const [, app] of merchantApplications) {
-        if (String(app.userId) === targetUserId) { existingApp = app; break; }
-      }
-    }
-
-    if (existingApp) {
-      existingApp.status = 'approved';
-      const _prevB = _getBadgesArray(existingApp);
-      if (!_prevB.includes(badgeNum)) _prevB.push(badgeNum);
-      existingApp.assignedBadges = _prevB;
-      existingApp.assignedBadge = _prevB[_prevB.length - 1];
-      existingApp.reviewedAt = new Date().toISOString();
-      merchantApplications.set(existingApp.id, existingApp);
-      await saveMerchantApp(existingApp);
-    } else {
-      // Create a direct-assign record (no user-submitted application needed)
-      const id = `MRC-DIRECT-${String(merchantAppCounter++).padStart(5, '0')}`;
-      const newApp = {
-        id, userId: targetUserId, username, email,
-        photoBase64: '', currency: 'USDT', socialAccounts: {},
-        status: 'approved', assignedBadge: badgeNum, assignedBadges: [badgeNum],
-        submittedAt: new Date().toISOString(), reviewedAt: new Date().toISOString(),
-        directAssign: true
-      };
-      merchantApplications.set(id, newApp);
-      await saveMerchantApp(newApp);
-    }
-
-    // Stamp badges on all their offers
-    const _allBadges = existingApp ? _getBadgesArray(existingApp) : [badgeNum];
-    try {
-      const cols = getCollections();
-      await cols.p2pOffers.updateMany(
-        { $or: [{ createdByUserId: targetUserId }, { advertiser: username }] },
-        { $set: { merchantBadge: badgeNum, merchantBadges: _allBadges } }
-      );
-    } catch (_) {}
-
-    // Also ensure security deposit reflects badge eligibility (min 500 USDT)
-    try {
-      const cols = getCollections();
-      // Look up user email from adminUserProfiles (keyed by userId)
-      let userEmailForDep = email || '';
-      if (!userEmailForDep) {
-        const profile = await cols.adminUserProfiles.findOne({ userId: targetUserId });
-        userEmailForDep = profile?.email || '';
-      }
-      if (userEmailForDep) {
-        const cred = await cols.p2pCredentials.findOne({ email: userEmailForDep });
-        const currentDep = Number(cred?.merchant?.depositLocked || 0);
-        if (currentDep < MERCHANT_BADGE_MIN_DEPOSIT) {
-          await cols.p2pCredentials.updateOne(
-            { email: userEmailForDep },
-            { $set: { 'merchant.depositLocked': MERCHANT_BADGE_MIN_DEPOSIT, 'merchant.activatedAt': new Date() } }
-          );
-        }
-      }
-    } catch (_) {}
-
-    return res.json({ success: true, message: `Badge ${badgeNum} assigned to ${username}.`, badge: badgeNum });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
-
-// ── Admin: Get merchant badge status + P2P stats for a specific user ──
-app.get('/api/admin/users/:userId/merchant-badge', requiresAdminSession, async (req, res) => {
-  const targetUserId = String(req.params.userId || '').trim();
-  let best = null;
-  for (const [, app] of merchantApplications) {
-    if (String(app.userId) !== targetUserId) continue;
-    if (!best) { best = app; continue; }
-    if (app.status === 'approved' && best.status !== 'approved') { best = app; continue; }
-    if (app.status !== 'approved' && best.status === 'approved') continue;
-    const t1 = app.reviewedAt ? new Date(app.reviewedAt).getTime() : new Date(app.submittedAt || 0).getTime();
-    const t2 = best.reviewedAt ? new Date(best.reviewedAt).getTime() : new Date(best.submittedAt || 0).getTime();
-    if (t1 > t2) best = app;
-  }
-
-  // Fetch P2P stats + security deposit for admin context
-  let securityDeposit = 0, totalOrders = 0, completedOrders = 0, completionRate = 0;
-  try {
-    const cols = getCollections();
-    // Security deposit from p2pCredentials
-    const cred = await cols.p2pCredentials.findOne({ $or: [{ userId: targetUserId }, { id: targetUserId }] });
-    if (cred) securityDeposit = Number(cred?.merchant?.depositLocked || 0) || 0;
-    // Order stats
-    const orders = await cols.p2pOrders.find({ $or: [{ sellerUserId: targetUserId }, { buyerUserId: targetUserId }] }).toArray();
-    totalOrders = orders.length;
-    completedOrders = orders.filter(o => ['RELEASED', 'COMPLETED'].includes(String(o.status || '').toUpperCase())).length;
-    completionRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
-  } catch (_) {}
-
-  const stats = { securityDeposit, totalOrders, completedOrders, completionRate, badgeEligible: securityDeposit >= MERCHANT_BADGE_MIN_DEPOSIT };
-  if (best) return res.json({ success: true, found: true, status: best.status, badge: best.assignedBadge || null, badges: _getBadgesArray(best), applicationId: best.id, stats });
-  return res.json({ success: true, found: false, status: null, badge: null, badges: [], stats });
-});
-
-app.put('/api/admin/users/:userId/profile', requiresAdminSession, async (req, res) => {
-  try {
-    const userId = String(req.params.userId || '').trim();
-    if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
-    const { email, fullName, mobile, address } = req.body || {};
-    const patch = {};
-    if (email)    patch.email    = String(email).trim();
-    if (fullName) patch.fullName = String(fullName).trim();
-    if (mobile)   patch.mobile   = String(mobile).trim();
-    if (address)  patch.address  = String(address).trim();
-    if (!Object.keys(patch).length) return res.status(400).json({ success: false, message: 'No fields to update' });
-    if (!adminStore || typeof adminStore.updateUserEditableProfile !== 'function')
-      return res.status(503).json({ success: false, message: 'Service not ready' });
-    const user = await adminStore.updateUserEditableProfile(userId, patch);
-    return res.json({ success: true, user });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: err.message || 'Update failed' });
-  }
-});
-
-app.put('/api/admin/users/:userId/profile', requiresAdminSession, async (req, res) => {
-  try {
-    const userId = String(req.params.userId || '').trim();
-    if (!userId) return res.status(400).json({ success: false, message: 'userId required' });
-    const { email, fullName, mobile, address } = req.body || {};
-    const patch = {};
-    if (email)    patch.email    = email;
-    if (fullName  !== undefined) patch.fullName  = fullName;
-    if (mobile    !== undefined) patch.mobile    = mobile;
-    if (address   !== undefined) patch.address   = address;
-    if (!Object.keys(patch).length) return res.status(400).json({ success: false, message: 'No fields to update' });
-    if (!adminStore || typeof adminStore.updateUserEditableProfile !== 'function')
-      return res.status(503).json({ success: false, message: 'Service not ready' });
-    const user = await adminStore.updateUserEditableProfile(userId, patch);
-    return res.json({ success: true, user });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: err.message || 'Update failed' });
-  }
-});
-
-
-// ── Merchant Application: User checks their status ──
-app.get('/api/merchant/application-status', requiresP2PUser, async (req, res) => {
-  const merchantAccess = await getMerchantAccessState({
-    userId: req.p2pUser.id,
-    username: req.p2pUser.username,
-    email: req.p2pUser.email
-  });
-  const best = merchantAccess.application;
-  const hasRealApplication = Boolean(best && !isLegacyDepositActivationApproval(best));
-  return res.json({
-    success: true,
-    found: hasRealApplication,
-    status: merchantAccess.status,
-    badge: merchantAccess.badge,
-    badges: merchantAccess.badges || [],
-    applicationId: hasRealApplication ? best?.id || null : null,
-    canApplyMerchant: merchantAccess.canApplyMerchant,
-    canPostAds: merchantAccess.canPostAds,
-    merchantActivated: merchantAccess.merchantActivated,
-    depositLocked: merchantAccess.depositLocked,
-    badgeEligible: merchantAccess.badgeEligible,
-    activationDepositRequired: MERCHANT_ACTIVATION_DEPOSIT,
-    badgeReviewDepositRequired: MERCHANT_BADGE_MIN_DEPOSIT
-  });
-});
-
-// Early guard for POST /api/p2p/orders — returns 503 JSON during cold-start
-// before registerP2POrderRoutes (inside boot()) has registered the real handler.
-app.post('/api/p2p/orders', requiresP2PUser, (req, res, next) => {
-  if (!p2pOrderController) {
+// ── GET /api/p2p/orders ────────────────────────────────────────────────────
+// Combined endpoint: returns active + history in { orders:[] } shape.
+// Prevents ROUTE_NOT_FOUND (404) when any client calls the bare /orders path.
+// Also acts as a readiness probe: returns 503 + { orders:[] } before DB is ready.
+app.get('/api/p2p/orders', requiresP2PUser, async (req, res) => {
+  if (!repos) {
     return res.status(503).json({
-      success: false,
       message: 'Server is starting up — please retry in a moment.',
-      code: 'SERVICE_UNAVAILABLE'
+      code: 'SERVICE_UNAVAILABLE',
+      orders: []
     });
   }
-  return next();
+  try {
+    const userId = req.p2pUser.id;
+    const limit  = Math.min(Math.max(Number(req.query.limit  || 50), 1), 50);
+    const offset = Math.max(Number(req.query.offset || 0), 0);
+    const result = await repos.listP2POrderHistory(userId, { limit, offset });
+    const orders = result.orders.map((o) => normalizeOrderState(o));
+    return res.json({ success: true, orders, total: result.total, hasMore: result.hasMore });
+  } catch (error) {
+    console.error('[GET /api/p2p/orders] error:', error.message);
+    return res.status(500).json({ message: 'Server error fetching orders.', orders: [] });
+  }
 });
 
 // Returns only the current user's own active orders (for mobile Active tab)
 app.get('/api/p2p/orders/my-active', requiresP2PUser, async (req, res) => {
+  if (!repos) {
+    return res.status(503).json({ message: 'Server is starting up — please retry in a moment.', code: 'SERVICE_UNAVAILABLE', orders: [] });
+  }
   try {
     const userId = req.p2pUser.id;
     const username = req.p2pUser.username;
-    const orders = await repos.listMyActiveOrders(userId);
-    const activeOrders = orders.map((order) => {
-      const normalized = normalizeOrderState(order);
-      return { ...normalized, isParticipant: true, paymentMethod: order.paymentMethod, myRole: resolveMyRole(order, req.p2pUser) };
-    });
-    console.log(`[my-active] user=${username} id=${userId} active_orders=${activeOrders.length}`);
-    return res.json({ orders: activeOrders });
+    const activeOrders = await listActiveOrdersForUserResponse(userId, { limit: 50 });
+    console.log(`[my-active] active_orders=${activeOrders.length}`);
+    return res.json({ total: activeOrders.length, orders: activeOrders });
   } catch (error) {
     console.error('[my-active] error:', error);
     return res.status(500).json({ message: 'Server error fetching active orders.' });
   }
 });
 
-app.get('/api/p2p/orders/bootstrap', requiresP2PUser, async (req, res) => {
-  const activeLimit = Math.min(Math.max(Number(req.query.activeLimit || 50), 1), 100);
-  const historyLimit = Math.min(Math.max(Number(req.query.historyLimit || 50), 1), 100);
-  try {
-    const userId = req.p2pUser.id;
-    const username = req.p2pUser.username;
-    const result = await repos.listP2POrderHistory(userId, {
-      limit: historyLimit,
-      offset: 0,
-      username,
-      email: req.p2pUser.email
-    });
-    const normalizedHistory = result.orders.map((order) => ({
-      ...normalizeOrderState(order),
-      myRole: resolveMyRole(order, req.p2pUser)
-    }));
-    const activeOrders = normalizedHistory
-      .filter((order) => ['CREATED', 'PENDING', 'PAID', 'PAYMENT_SENT', 'DISPUTED'].includes(String(order.status || '').toUpperCase()))
-      .slice(0, activeLimit);
-
-    return res.json({
-      activeOrders,
-      historyOrders: normalizedHistory,
-      orders: normalizedHistory
-    });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error fetching bootstrap orders.' });
-  }
-});
-
 app.get('/api/p2p/orders/live', requiresP2PUser, async (req, res) => {
-  const side = String(req.query.side || '').trim().toLowerCase();
-  const asset = String(req.query.asset || '').trim().toUpperCase();
-
   try {
-    const liveOrders = (await repos.listP2PLiveOrders({ side: side || undefined, asset: asset || undefined, limit: 20 }))
-      .map((order) => normalizeOrderState(order))
-      .map((order) => ({
-        id: order.id,
-        reference: order.reference,
-        side: order.side,
-        asset: order.asset,
-        status: order.status,
-        advertiser: order.advertiser,
-        amountInr: order.amountInr,
-        price: order.price,
-        participantsLabel: order.participantsLabel,
-        isParticipant: order.participants.some((participant) => participant.id === req.p2pUser.id),
-        updatedAt: order.updatedAt,
-        remainingSeconds: order.remainingSeconds
-      }));
-
+    const liveOrders = await listActiveOrdersForUserResponse(req.p2pUser.id, { limit: 50 });
     return res.json({
       total: liveOrders.length,
       orders: liveOrders
@@ -4640,16 +2929,14 @@ app.get('/api/p2p/orders/live', requiresP2PUser, async (req, res) => {
 });
 
 app.get('/api/p2p/orders/history', requiresP2PUser, async (req, res) => {
-  const limit = Math.min(Math.max(Number(req.query.limit || 10), 1), 50);
+  if (!repos) {
+    return res.status(503).json({ message: 'Server is starting up — please retry in a moment.', code: 'SERVICE_UNAVAILABLE', orders: [] });
+  }
+  const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 50);
   const offset = Math.max(Number(req.query.offset || 0), 0);
   try {
-    const result = await repos.listP2POrderHistory(req.p2pUser.id, {
-      limit,
-      offset,
-      username: req.p2pUser.username,
-      email: req.p2pUser.email
-    });
-    const orders = result.orders.map((o) => ({ ...normalizeOrderState(o), myRole: resolveMyRole(o, req.p2pUser) }));
+    const result = await repos.listP2POrderHistory(req.p2pUser.id, { limit, offset });
+    const orders = result.orders.map((o) => normalizeOrderState(o));
     return res.json({ total: result.total, hasMore: result.hasMore, offset, limit, orders });
   } catch (error) {
     return res.status(500).json({ message: 'Server error.' });
@@ -4666,7 +2953,7 @@ app.get('/api/p2p/orders/by-reference/:reference', requiresP2PUser, async (req, 
       return res.status(404).json({ message: 'Order not found for this reference.' });
     }
 
-    if (!isParticipant(orderByReference, req.p2pUser.id, req.p2pUser)) {
+    if (!isParticipant(orderByReference, req.p2pUser.id)) {
       return res.status(403).json({ message: 'Only buyer and seller can access this order.' });
     }
 
@@ -4685,7 +2972,7 @@ app.post('/api/p2p/orders/:orderId/join', requiresP2PUser, async (req, res) => {
     if (!order) {
       return res.status(404).json({ message: 'Order not found.' });
     }
-    if (!isParticipant(order, req.p2pUser.id, req.p2pUser)) {
+    if (!isParticipant(order, req.p2pUser.id)) {
       return res.status(403).json({ message: 'Only buyer and seller can access this order.' });
     }
 
@@ -4706,223 +2993,15 @@ app.get('/api/p2p/orders/:orderId', requiresP2PUser, async (req, res) => {
       return res.status(404).json({ message: 'Order not found.' });
     }
 
-    if (!isParticipant(order, req.p2pUser.id, req.p2pUser)) {
+    if (!isParticipant(order, req.p2pUser.id)) {
       return res.status(403).json({ message: 'Only buyer and seller can access this order.' });
     }
 
-    const myUserId = req.p2pUser.id;
-    const myUsername = String(req.p2pUser.username || '').trim().toLowerCase();
-    const sellerMatches =
-      order.sellerUserId === myUserId ||
-      order.sellerId === myUserId ||
-      String(order.sellerUsername || '').trim().toLowerCase() === myUsername ||
-      (Array.isArray(order.participants) && order.participants.some(
-        (p) => p.role === 'seller' && (p.id === myUserId || String(p.username || '').trim().toLowerCase() === myUsername)
-      ));
-    const myRole = sellerMatches ? 'seller' : 'buyer';
-
     return res.json({
-      order: {
-        ...normalizeOrderState(order),
-        myRole,
-        messages: toClientMessages(order.messages || [])
-      }
+      order: normalizeOrderState(order)
     });
   } catch (error) {
     return res.status(500).json({ message: 'Server error while fetching order.' });
-  }
-});
-
-app.post('/api/p2p/orders/:orderId/appeal', requiresP2PUser, async (req, res) => {
-  const appealType = String(req.body.reason || req.body.appealType || '').trim();
-  const appealReason = String(req.body.description || req.body.appealReason || '').trim();
-  const appealImages = Array.isArray(req.body.images)
-    ? req.body.images.slice(0, 3)
-    : Array.isArray(req.body.appealImages)
-      ? req.body.appealImages.slice(0, 3)
-      : [];
-
-  if (!appealType) {
-    return res.status(400).json({ message: 'Appeal reason is required.' });
-  }
-  if (appealReason.length < 1) {
-    return res.status(400).json({ message: 'Please describe your issue.' });
-  }
-
-  try {
-    const updatedOrder = await walletService.setOrderDisputed(req.params.orderId, req.p2pUser, {
-      reason: appealReason,
-      appealType,
-      appealReason,
-      appealImages
-    });
-
-    const normalizedOrder = normalizeOrderState(updatedOrder);
-    const normalizedMessages = toClientMessages(updatedOrder.messages || []);
-    const participantPayload = {
-      order: normalizedOrder,
-      orderId: normalizedOrder.id,
-      reference: normalizedOrder.reference,
-      status: normalizedOrder.status,
-      updatedAt: normalizedOrder.updatedAt
-    };
-
-    broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
-    broadcastOrderEvent(updatedOrder.id, 'message_update', { messages: normalizedMessages });
-    broadcastParticipantOrderEvent(updatedOrder, 'orders_refresh', participantPayload);
-
-    // Notify admin via SSE immediately (real-time popup in admin dashboard)
-    const raisedByUser = req.p2pUser.username || req.p2pUser.email;
-    broadcastAdminSupportEvent({
-      type: 'dispute',
-      orderId: updatedOrder.id,
-      reference: updatedOrder.reference || updatedOrder.id,
-      agentName: raisedByUser,
-      email: req.p2pUser.email || '',
-      subject: `Dispute filed on order #${updatedOrder.reference || updatedOrder.id}`,
-      message: String(appealReason).slice(0, 100),
-      appealType
-    });
-
-    if (p2pEmailService) {
-      setImmediate(async () => {
-        try {
-          const [sellerCred, buyerCred] = await Promise.all([
-            repos.getP2PCredentialByUserId(updatedOrder.sellerUserId),
-            repos.getP2PCredentialByUserId(updatedOrder.buyerUserId)
-          ]);
-          const adminEmail = String(process.env.ADMIN_EMAIL || '').trim();
-          if (adminEmail) await p2pEmailService.sendDisputeRaised(adminEmail, updatedOrder, raisedByUser);
-          if (sellerCred?.email) await p2pEmailService.sendDisputeRaised(sellerCred.email, updatedOrder, raisedByUser);
-          if (buyerCred?.email && buyerCred.email !== sellerCred?.email) {
-            await p2pEmailService.sendDisputeRaised(buyerCred.email, updatedOrder, raisedByUser);
-          }
-        } catch (emailErr) {
-          console.warn('[p2p-email] appeal notification failed:', emailErr.message);
-        }
-      });
-    }
-
-    return res.json({
-      message: 'Appeal submitted. Redirecting to dispute orders.',
-      order: normalizedOrder
-    });
-  } catch (error) {
-    console.error('Appeal error:', error.message);
-    return res.status(error.status || 500).json({
-      message: error.message || 'Failed to submit appeal.'
-    });
-  }
-});
-
-app.post('/api/p2p/orders/:orderId/cancel-appeal', requiresP2PUser, async (req, res) => {
-  try {
-    const { p2pOrders } = getCollections();
-    const order = await p2pOrders.findOne({ id: req.params.orderId });
-    if (!order) return res.status(404).json({ message: 'Order not found.' });
-    if (order.status !== 'DISPUTED') return res.status(400).json({ message: 'Order is not under appeal.' });
-    const myId = req.p2pUser.id;
-    const myUsername = String(req.p2pUser.username || '').trim().toLowerCase();
-    const myEmail = String(req.p2pUser.email || '').trim().toLowerCase();
-    const isAppealOwner =
-      order.appealedByUserId === myId ||
-      (myUsername && String(order.appealedByUsername || order.disputedBy || '').trim().toLowerCase() === myUsername) ||
-      (myEmail && String(order.appealedByEmail || '').trim().toLowerCase() === myEmail);
-    if (!isAppealOwner) {
-      return res.status(403).json({ message: 'Only the user who raised the appeal can cancel it.' });
-    }
-    const revertStatus = order.preDisputeStatus || 'PAYMENT_SENT';
-    const now = Date.now();
-    await p2pOrders.updateOne(
-      { id: req.params.orderId, status: 'DISPUTED' },
-      {
-        $set: { status: revertStatus, updatedAt: now, disputeStatus: 'CANCELLED' },
-        $push: {
-          messages: {
-            id: `msg_${now}_cancel_appeal`,
-            sender: 'system',
-            senderRole: 'system',
-            text: 'Appeal cancelled by ' + (order.appealedByRole || 'user') + '. Order has resumed.',
-            createdAt: now
-          }
-        }
-      }
-    );
-    const updatedOrder = await p2pOrders.findOne({ id: req.params.orderId });
-    const normalizedOrder = normalizeOrderState(updatedOrder);
-    const normalizedMessages = toClientMessages(updatedOrder.messages || []);
-    broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
-    broadcastOrderEvent(updatedOrder.id, 'message_update', { messages: normalizedMessages });
-    broadcastParticipantOrderEvent(updatedOrder, 'orders_refresh', { order: normalizedOrder, status: normalizedOrder.status });
-    return res.json({ message: 'Appeal cancelled. Order resumed.', order: normalizedOrder });
-  } catch (err) {
-    console.error('[cancel-appeal]', err);
-    return res.status(500).json({ message: err.message || 'Failed to cancel appeal.' });
-  }
-});
-
-app.post('/api/p2p/orders/:orderId/rate', requiresP2PUser, async (req, res) => {
-  try {
-    const order = await repos.getP2POrderById(req.params.orderId);
-    if (!order) return res.status(404).json({ message: 'Order not found.' });
-    if (!isParticipant(order, req.p2pUser.id, req.p2pUser)) {
-      return res.status(403).json({ message: 'Only participants can rate this order.' });
-    }
-
-    const stars = Number(req.body.stars);
-    if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
-      return res.status(400).json({ message: 'Stars must be between 1 and 5.' });
-    }
-    const comment = String(req.body.comment || '').trim().slice(0, 500);
-
-    const { p2pRatings } = getCollections();
-    await p2pRatings.updateOne(
-      { orderId: req.params.orderId, raterId: req.p2pUser.id },
-      { $set: { orderId: req.params.orderId, raterId: req.p2pUser.id, stars, comment, createdAt: new Date() } },
-      { upsert: true }
-    );
-
-    return res.json({ success: true, message: 'Rating submitted.' });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error while submitting rating.' });
-  }
-});
-
-// POST /api/p2p/block/:userId — block a counterparty
-app.post('/api/p2p/block/:userId', requiresP2PUser, async (req, res) => {
-  try {
-    const blockerId = req.p2pUser.userId || req.p2pUser.id;
-    const blockedId = String(req.params.userId || '').trim();
-    if (!blockedId) return res.status(400).json({ message: 'userId is required.' });
-    if (blockerId === blockedId) return res.status(400).json({ message: 'Cannot block yourself.' });
-    await repos.blockUser(blockerId, blockedId);
-    return res.json({ success: true, message: 'User blocked.' });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error while blocking user.' });
-  }
-});
-
-// DELETE /api/p2p/block/:userId — unblock a user
-app.delete('/api/p2p/block/:userId', requiresP2PUser, async (req, res) => {
-  try {
-    const blockerId = req.p2pUser.userId || req.p2pUser.id;
-    const blockedId = String(req.params.userId || '').trim();
-    if (!blockedId) return res.status(400).json({ message: 'userId is required.' });
-    await repos.unblockUser(blockerId, blockedId);
-    return res.json({ success: true, message: 'User unblocked.' });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error while unblocking user.' });
-  }
-});
-
-// GET /api/p2p/blocked-users — list users blocked by current user
-app.get('/api/p2p/blocked-users', requiresP2PUser, async (req, res) => {
-  try {
-    const blockerId = req.p2pUser.userId || req.p2pUser.id;
-    const blocked = await repos.getBlockedUsers(blockerId);
-    return res.json({ success: true, blockedUsers: blocked.map((b) => b.blockedId) });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error while fetching blocked users.' });
   }
 });
 
@@ -4939,47 +3018,23 @@ app.post('/api/p2p/orders/:orderId/status', requiresP2PUser, async (req, res) =>
     } else if (action === 'release') {
       updatedOrder = await walletService.releaseOrder(req.params.orderId, req.p2pUser);
     } else if (action === 'dispute') {
-      const appealType = String(req.body.appealType || '').trim();
-      const appealReason = String(req.body.appealReason || '').trim();
-      const disputeReason = String(req.body.reason || appealReason || appealType || '').trim();
-      updatedOrder = await walletService.setOrderDisputed(req.params.orderId, req.p2pUser, {
-        reason: disputeReason,
-        appealType,
-        appealReason,
-        appealImages: Array.isArray(req.body.appealImages) ? req.body.appealImages.slice(0, 3) : []
-      });
+      updatedOrder = await walletService.setOrderDisputed(req.params.orderId, req.p2pUser);
     } else {
       return res.status(400).json({ message: 'Invalid action.' });
     }
 
     const normalizedOrder = normalizeOrderState(updatedOrder);
     const normalizedMessages = toClientMessages(updatedOrder.messages || []);
-    const participantPayload = {
-      order: normalizedOrder,
-      orderId: normalizedOrder.id,
-      reference: normalizedOrder.reference,
-      status: normalizedOrder.status,
-      updatedAt: normalizedOrder.updatedAt
-    };
 
     broadcastOrderEvent(updatedOrder.id, 'order_update', { order: normalizedOrder });
     broadcastOrderEvent(updatedOrder.id, 'message_update', { messages: normalizedMessages });
-    broadcastParticipantOrderEvent(updatedOrder, 'orders_refresh', participantPayload);
 
-    // Real-time admin SSE for disputes
-    if (action === 'dispute') {
-      const raisedBy = req.p2pUser.username || req.p2pUser.email;
-      broadcastAdminSupportEvent({
-        type: 'dispute',
-        orderId: updatedOrder.id,
-        reference: updatedOrder.reference || updatedOrder.id,
-        agentName: raisedBy,
-        email: req.p2pUser.email || '',
-        subject: `Dispute filed on order #${updatedOrder.reference || updatedOrder.id}`,
-        message: String(req.body.appealReason || req.body.reason || '').slice(0, 100),
-        appealType: String(req.body.appealType || '').trim()
-      });
-    }
+    // Push real-time status update to both buyer and seller via user SSE stream
+    const _pushPayload = { orderId: updatedOrder.id, reference: updatedOrder.reference, status: updatedOrder.status };
+    const _sellId = updatedOrder.sellerUserId || updatedOrder.sellerId;
+    const _buyId  = updatedOrder.buyerUserId  || updatedOrder.buyerId;
+    if (_sellId) broadcastUserEvent(_sellId, 'order_updated', _pushPayload);
+    if (_buyId && _buyId !== _sellId) broadcastUserEvent(_buyId, 'order_updated', _pushPayload);
 
     // Send email notifications (non-blocking)
     if (p2pEmailService) {
@@ -5004,10 +3059,9 @@ app.post('/api/p2p/orders/:orderId/status', requiresP2PUser, async (req, res) =>
           } else if (action === 'dispute') {
             // Notify admin + both parties
             const adminEmail = String(process.env.ADMIN_EMAIL || '').trim();
-            const raisedBy = req.p2pUser.username || req.p2pUser.email;
-            if (adminEmail) await p2pEmailService.sendDisputeRaised(adminEmail, updatedOrder, raisedBy);
-            if (sellerEmail) await p2pEmailService.sendDisputeRaised(sellerEmail, updatedOrder, raisedBy);
-            if (buyerEmail && buyerEmail !== sellerEmail) await p2pEmailService.sendDisputeRaised(buyerEmail, updatedOrder, raisedBy);
+            if (adminEmail) await p2pEmailService.sendDisputeRaised(adminEmail, updatedOrder, req.p2pUser.username || req.p2pUser.email);
+            if (sellerEmail) await p2pEmailService.sendDisputeRaised(sellerEmail, updatedOrder, req.p2pUser.username || req.p2pUser.email);
+            if (buyerEmail && buyerEmail !== sellerEmail) await p2pEmailService.sendDisputeRaised(buyerEmail, updatedOrder, req.p2pUser.username || req.p2pUser.email);
           }
         } catch (emailErr) {
           console.warn('[p2p-email] notification failed:', emailErr.message);
@@ -5017,8 +3071,7 @@ app.post('/api/p2p/orders/:orderId/status', requiresP2PUser, async (req, res) =>
 
     return res.json({
       message: 'Order updated.',
-      order: { ...normalizedOrder, messages: normalizedMessages },
-      messages: normalizedMessages
+      order: normalizedOrder
     });
   } catch (error) {
     if (error.status) {
@@ -5036,7 +3089,7 @@ app.get('/api/p2p/orders/:orderId/messages', requiresP2PUser, async (req, res) =
       return res.status(404).json({ message: 'Order not found.' });
     }
 
-    if (!isParticipant(order, req.p2pUser.id, req.p2pUser)) {
+    if (!isParticipant(order, req.p2pUser.id)) {
       return res.status(403).json({ message: 'Only buyer and seller can access this order.' });
     }
 
@@ -5058,7 +3111,7 @@ app.post('/api/p2p/orders/:orderId/messages', requiresP2PUser, async (req, res) 
 
   try {
     const mutation = await withOrderMutation(req.params.orderId, (next) => {
-      if (!isParticipant(next, req.p2pUser.id, req.p2pUser)) {
+      if (!isParticipant(next, req.p2pUser.id)) {
         return { error: 'not_participant' };
       }
 
@@ -5067,11 +3120,9 @@ app.post('/api/p2p/orders/:orderId/messages', requiresP2PUser, async (req, res) 
       }
 
       const now = Date.now();
-      const senderRole = next.buyerId === req.p2pUser.id ? 'buyer' : 'seller';
       const msgObj = {
         id: `msg_${now}_${Math.floor(Math.random() * 1000)}`,
         sender: req.p2pUser.username,
-        senderRole,
         text: text || '',
         createdAt: now
       };
@@ -5114,7 +3165,7 @@ app.get('/api/p2p/orders/:orderId/stream', requiresP2PUser, async (req, res) => 
       return res.status(404).json({ message: 'Order not found.' });
     }
 
-    if (!isParticipant(order, req.p2pUser.id, req.p2pUser)) {
+    if (!isParticipant(order, req.p2pUser.id)) {
       return res.status(403).json({ message: 'Only buyer and seller can access this order.' });
     }
 
@@ -5158,500 +3209,16 @@ app.get('/api/p2p/me/stream', requiresP2PUser, (req, res) => {
   });
 });
 
-// ── Admin Support SSE — live notify ──────────────────────────────────────────
-app.get('/api/admin/support/live-notify', requiresAdminSession, (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  adminSupportSseClients.add(res);
-  res.write(': connected\n\n');
-  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) {} }, 20000);
-  req.on('close', () => { clearInterval(ping); adminSupportSseClients.delete(res); });
-});
-
-// ── Admin: Withdrawal live-notify SSE ─────────────────────────────────────────
-app.get('/api/admin/withdrawal/live-notify', requiresAdminSession, (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  adminWithdrawalSseClients.add(res);
-  res.write(': connected\n\n');
-  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) {} }, 20000);
-  req.on('close', () => { clearInterval(ping); adminWithdrawalSseClients.delete(res); });
-});
-
-// ── Admin: New user registration SSE ──────────────────────────────────────────
-app.get('/api/admin/user/live-notify', requiresAdminSession, (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  adminNewUserSseClients.add(res);
-  res.write(': connected\n\n');
-  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) {} }, 20000);
-  req.on('close', () => { clearInterval(ping); adminNewUserSseClients.delete(res); });
-});
-
-// ── Admin: Deposit request SSE ────────────────────────────────────────────────
-app.get('/api/admin/deposit/live-notify', requiresAdminSession, (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  adminDepositSseClients.add(res);
-  res.write(': connected\n\n');
-  const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch(e) {} }, 20000);
-  req.on('close', () => { clearInterval(ping); adminDepositSseClients.delete(res); });
-});
-
-// ── Admin: List all withdrawal requests ───────────────────────────────────────
-app.get('/api/admin/wallet/withdrawals', requiresAdminSession, async (req, res) => {
-  try {
-    const statusFilter = String(req.query.status || '').toLowerCase();
-    const limit = Math.min(Math.max(Number(req.query.limit || 50), 1), 200);
-    const { withdrawalRequests, p2pCredentials } = getCollections();
-    const query = {};
-    if (statusFilter) query.status = statusFilter;
-    const rows = await withdrawalRequests
-      .find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .toArray();
-
-    // Enrich records missing email — look up credential by userId
-    const missingEmail = rows.filter(r => !r.email && r.userId);
-    let credMap = {};
-    if (missingEmail.length > 0) {
-      const userIds = [...new Set(missingEmail.map(r => r.userId))];
-      const creds = await p2pCredentials.find({ userId: { $in: userIds } }, { projection: { userId: 1, email: 1, username: 1 } }).toArray();
-      for (const c of creds) credMap[c.userId] = c;
-    }
-
-    const withdrawals = rows.map((r) => {
-      const cred = credMap[r.userId] || {};
-      const email = r.email || cred.email || null;
-      const rawUsername = r.username || cred.username || r.userId || '';
-      // derive display name from email if username looks like a userId
-      const derivedName = email ? email.split('@')[0].replace(/[^a-z0-9_]/gi, '_').slice(0, 20) : rawUsername;
-      const displayName = (rawUsername && !rawUsername.startsWith('usr_')) ? rawUsername : derivedName;
-      return {
-        requestId: r.requestId || String(r._id),
-        id: r.requestId || String(r._id),
-        userId: r.userId,
-        name: displayName,
-        username: r.userId,
-        email: email,
-        amount: r.amount,
-        currency: r.currency || 'USDT',
-        coin: r.currency || 'USDT',
-        network: (r.metadata && r.metadata.network) || r.network || null,
-        address: r.address || r.toAddress || null,
-        fee: (r.metadata && r.metadata.fee) || r.fee || 0,
-        status: (r.status || 'PENDING').toUpperCase(),
-        createdAt: r.createdAt,
-        processedAt: r.processedAt || null,
-        reason: (r.metadata && r.metadata.reason) || null
-      };
-    });
-    return res.json({ total: withdrawals.length, withdrawals });
-  } catch (error) {
-    return res.status(500).json({ message: 'Server error while fetching withdrawals.' });
-  }
-});
-
-// ── Admin: Approve or reject a withdrawal request ─────────────────────────────
-app.post('/api/admin/wallet/withdrawals/:requestId/review', requiresAdminSession, async (req, res) => {
-  const requestId = String(req.params.requestId || '').trim();
-  if (!requestId) return res.status(400).json({ message: 'requestId is required.' });
-  const { decision, reason } = req.body || {};
-  const normalizedDecision = String(decision || '').toUpperCase();
-  if (!['APPROVED', 'REJECTED'].includes(normalizedDecision)) {
-    return res.status(400).json({ message: 'decision must be APPROVED or REJECTED.' });
-  }
-  try {
-    const targetStatus = normalizedDecision === 'APPROVED' ? 'approved' : 'rejected';
-    const withdrawal = await walletService.processWithdrawalRequest(requestId, targetStatus, {
-      isAdmin: true,
-      userId: 'admin',
-      username: 'Admin',
-      reason: String(reason || (normalizedDecision === 'APPROVED' ? 'Approved by admin' : 'Rejected by admin')).trim()
-    });
-    broadcastAdminWithdrawalEvent({
-      type: 'withdrawal_reviewed',
-      requestId,
-      decision: normalizedDecision,
-      status: withdrawal.status
-    });
-
-    // Send withdrawal success email if approved
-    if (normalizedDecision === 'APPROVED') {
-      try {
-        const emailService = req.app.get('authEmailService');
-        if (emailService && withdrawal.userId) {
-          const cols = getCollections();
-          const cred = await cols.p2pCredentials.findOne({
-            $or: [{ userId: withdrawal.userId }, { id: withdrawal.userId }]
-          }).catch(() => null);
-          const userEmail = cred?.email;
-          if (userEmail) {
-            emailService.sendWithdrawalSuccessEmail(userEmail, {
-              amount: withdrawal.amount,
-              asset: withdrawal.currency || 'USDT',
-              address: withdrawal.address,
-              transactionId: withdrawal.requestId,
-              processedAt: withdrawal.processedAt || new Date().toISOString()
-            }).catch(() => {});
-          }
-        }
-      } catch (_) {}
-    }
-
-    return res.json({
-      message: normalizedDecision === 'APPROVED'
-        ? 'Withdrawal approved successfully.'
-        : 'Withdrawal rejected. Funds returned to user.',
-      withdrawal
-    });
-  } catch (error) {
-    if (error.status) return res.status(error.status).json({ message: error.message });
-    return res.status(500).json({ message: String(error.message || 'Server error while reviewing withdrawal.') });
-  }
-});
-
-
-// ── Admin: Edit withdrawal address before approval ────────────────────────────
-app.patch('/api/admin/wallet/withdrawals/:requestId/address', requiresAdminSession, async (req, res) => {
-  try {
-    const requestId = String(req.params.requestId || '').trim();
-    if (!requestId) return res.status(400).json({ message: 'requestId is required.' });
-    const { address } = req.body || {};
-    const newAddress = String(address || '').trim();
-    if (!newAddress) return res.status(400).json({ message: 'address is required.' });
-    const cols = getCollections();
-    const result = await cols.withdrawalRequests.updateOne(
-      { requestId, status: { $in: ['pending', 'PENDING'] } },
-      { $set: { address: newAddress, updatedAt: new Date() } }
-    );
-    if (!result.matchedCount) return res.status(404).json({ message: 'Withdrawal not found or already processed.' });
-    return res.json({ success: true, address: newAddress });
-  } catch (error) {
-    return res.status(500).json({ message: String(error.message || 'Failed to update withdrawal address.') });
-  }
-});
-
-// ── Admin: Review deposit request (approve / reject) ──────────────────────────
-app.post('/api/admin/wallet/deposits/:depositId/review', requiresAdminSession, async (req, res) => {
-  const depositId = String(req.params.depositId || '').trim();
-  if (!depositId) return res.status(400).json({ message: 'depositId is required.' });
-  const { decision, reason } = req.body || {};
-  const normalizedDecision = String(decision || '').toUpperCase();
-  if (!['APPROVED', 'REJECTED'].includes(normalizedDecision)) {
-    return res.status(400).json({ message: 'decision must be APPROVED or REJECTED.' });
-  }
-  try {
-    const deposit = await adminStore.reviewDeposit(
-      depositId,
-      normalizedDecision === 'APPROVED' ? 'COMPLETED' : 'REJECTED',
-      String(reason || (normalizedDecision === 'APPROVED' ? 'Approved by admin' : 'Rejected by admin')).trim(),
-      { id: 'admin', role: 'admin' }
-    );
-
-    // Credit wallet if approved
-    if (normalizedDecision === 'APPROVED' && walletService) {
-      try {
-        await walletService.creditAvailable(deposit.userId, Number(deposit.amount || 0), {
-          type: 'deposit',
-          currency: String(deposit.coin || 'USDT').toUpperCase(),
-          referenceId: deposit.id,
-          metadata: { source: 'admin_deposit_approval' }
-        });
-      } catch (_) {}
-    }
-
-    // Send deposit success email
-    if (normalizedDecision === 'APPROVED') {
-      try {
-        const emailService = req.app.get('authEmailService');
-        const userEmail = deposit.email;
-        if (emailService && userEmail) {
-          emailService.sendDepositSuccessEmail(userEmail, {
-            amount: deposit.amount,
-            asset: deposit.coin || 'USDT',
-            txId: deposit.txHash || deposit.id,
-            processedAt: new Date().toISOString()
-          }).catch(() => {});
-        }
-      } catch (_) {}
-    }
-
-    return res.json({
-      message: normalizedDecision === 'APPROVED'
-        ? 'Deposit approved and credited to user wallet.'
-        : 'Deposit request rejected.',
-      deposit
-    });
-  } catch (error) {
-    return res.status(error.status || 500).json({ message: String(error.message || 'Server error while reviewing deposit.') });
-  }
-});
-
-// ── Admin: List deposit requests ──────────────────────────────────────────────
-app.get('/api/admin/wallet/deposits', requiresAdminSession, async (req, res) => {
-  try {
-    const page = Math.max(1, Number(req.query.page || 1));
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
-    const status = String(req.query.status || '').toUpperCase() || undefined;
-    const result = await adminStore.listDeposits({ page, limit, status });
-    return res.json(result);
-  } catch (error) {
-    return res.status(500).json({ message: String(error.message || 'Server error while listing deposits.') });
-  }
-});
-
-// ── Public Support Chat — user submits message ────────────────────────────────
-app.post('/api/support/chat', async (req, res) => {
-  try {
-    const { message, topic, email, name } = req.body || {};
-    if (!message || !String(message).trim()) {
-      return res.status(400).json({ message: 'Message is required.' });
-    }
-    const { userId: bodyUserId } = req.body || {};
-    // Try to enrich with session user info
-    let sessionUser = null;
-    try { sessionUser = await getP2PUserFromRequest(req); } catch(_) {}
-    const resolvedEmail = email || (sessionUser && sessionUser.email) || '';
-    const resolvedName = name || (sessionUser && (sessionUser.username || sessionUser.email)) || 'User';
-    const resolvedUserId = bodyUserId || (sessionUser && sessionUser.id) || resolvedEmail || 'guest';
-    const ticketData = {
-      id: `tkt_${Date.now()}_${require('crypto').randomBytes(16).toString('hex')}`,
-      userId: resolvedUserId,
-      subject: topic ? `[${topic}] ${String(message).slice(0, 60)}` : String(message).slice(0, 80),
-      status: 'OPEN',
-      priority: 'MEDIUM',
-      assignedTo: '',
-      email: resolvedEmail,
-      name: resolvedName,
-      username: resolvedName,
-      messages: [{
-        id: `tmsg_${Date.now()}`,
-        sender: 'user',
-        senderName: resolvedName,
-        text: String(message).trim(),
-        createdAt: new Date()
-      }],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    // Save to DB if adminStore is ready
-    let savedId = ticketData.id;
-    if (adminStore && typeof adminStore.createSupportTicket === 'function') {
-      const saved = await adminStore.createSupportTicket(ticketData);
-      if (saved && saved.id) savedId = saved.id;
-    }
-    // Notify admin via SSE
-    broadcastAdminSupportEvent({
-      ticketId: savedId,
-      subject: ticketData.subject,
-      agentName: resolvedName,
-      email: resolvedEmail || resolvedUserId,
-      message: String(message).trim().slice(0, 100)
-    });
-    return res.json({ success: true, ticketId: savedId, message: 'Support request submitted.' });
-  } catch (err) {
-    return res.status(500).json({ message: 'Failed to submit support request.' });
-  }
-});
-
-// ── Public: get ticket messages (user polling for admin replies) ──────────────
-app.get('/api/support/ticket/:ticketId/messages', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    if (!ticketId) return res.status(400).json({ message: 'ticketId required' });
-    if (!adminStore || typeof adminStore.getSupportTicket !== 'function') {
-      return res.status(503).json({ message: 'Support service unavailable' });
-    }
-    const ticket = await adminStore.getSupportTicket(String(ticketId).trim());
-
-    // Ownership check: if caller is a logged-in P2P user, verify the ticket belongs to them
-    try {
-      const p2pUser = await getP2PUserFromRequest(req);
-      if (p2pUser) {
-        const ticketOwner = String(ticket.userId || ticket.email || '').toLowerCase().trim();
-        const callerEmail = String(p2pUser.email || '').toLowerCase().trim();
-        const callerId = String(p2pUser.id || '').toLowerCase().trim();
-        if (ticketOwner && ticketOwner !== 'guest' && ticketOwner !== callerEmail && ticketOwner !== callerId) {
-          return res.status(403).json({ message: 'Access denied.' });
-        }
-      }
-    } catch (_) { /* guest user — ticket ID entropy is the protection */ }
-
-    // Return messages array and current status
-    return res.json({
-      ticketId: ticket.id,
-      status: ticket.status,
-      adminTypingAt: ticket.adminTypingAt || null,
-      userLastSeenAt: ticket.userLastSeenAt || null,
-      userTypingAt: ticket.userTypingAt || null,
-      messages: (ticket.messages || []).map(m => {
-        const isUser = m.sender === 'user';
-        return {
-          id: m.id,
-          sender: isUser ? 'user' : 'admin',
-          senderName: m.senderName || (isUser ? 'You' : 'Support Agent'),
-          text: m.text,
-          createdAt: m.createdAt
-        };
-      })
-    });
-  } catch (err) {
-    if (err && err.status === 404) return res.status(404).json({ message: 'Ticket not found' });
-    return res.status(500).json({ message: 'Could not fetch messages' });
-  }
-});
-
-// ── Public: user sends a reply on an existing ticket ─────────────────────────
-app.post('/api/support/ticket/:ticketId/user-reply', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const { message, name } = req.body || {};
-    if (!ticketId || !message || !String(message).trim()) {
-      return res.status(400).json({ message: 'ticketId and message required' });
-    }
-    if (!adminStore || typeof adminStore.getSupportTicket !== 'function') {
-      return res.status(503).json({ message: 'Support service unavailable' });
-    }
-    const ticket = await adminStore.getSupportTicket(String(ticketId).trim());
-
-    // Ownership check: if caller is a logged-in P2P user, verify the ticket belongs to them
-    try {
-      const p2pUser = await getP2PUserFromRequest(req);
-      if (p2pUser) {
-        const ticketOwner = String(ticket.userId || ticket.email || '').toLowerCase().trim();
-        const callerEmail = String(p2pUser.email || '').toLowerCase().trim();
-        const callerId = String(p2pUser.id || '').toLowerCase().trim();
-        if (ticketOwner && ticketOwner !== 'guest' && ticketOwner !== callerEmail && ticketOwner !== callerId) {
-          return res.status(403).json({ message: 'Access denied.' });
-        }
-      }
-    } catch (_) { /* guest user — ticket ID entropy is the protection */ }
-    const newMsg = {
-      id: `tmsg_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
-      sender: 'user',
-      senderName: name || ticket.name || 'User',
-      text: String(message).trim(),
-      createdAt: new Date()
-    };
-    // Push message to ticket's messages array in DB
-    const { getCollections } = require('./lib/db');
-    const cols = getCollections ? getCollections() : null;
-    const adminSupportTickets = cols ? cols.adminSupportTickets : null;
-    if (adminSupportTickets) {
-      await adminSupportTickets.updateOne(
-        { id: String(ticketId).trim() },
-        {
-          $push: { messages: newMsg },
-          $set: { updatedAt: new Date(), status: 'OPEN' }
-        }
-      );
-    }
-    // Notify admin via SSE that user replied
-    broadcastAdminSupportEvent({
-      type: 'user_reply',
-      ticketId: ticket.id,
-      subject: ticket.subject,
-      agentName: name || ticket.name || 'User',
-      message: newMsg.text.slice(0, 100)
-    });
-    return res.json({ success: true, messageId: newMsg.id });
-  } catch (err) {
-    if (err && err.status === 404) return res.status(404).json({ message: 'Ticket not found' });
-    return res.status(500).json({ message: 'Could not send reply' });
-  }
-});
-
-// ── Public: user typing heartbeat ─────────────────────────────────────────────
-app.post('/api/support/ticket/:ticketId/typing', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    if (!ticketId) return res.status(400).json({ message: 'ticketId required' });
-    const { getCollections } = require('./lib/db');
-    const cols = getCollections ? getCollections() : null;
-    const col = cols ? cols.adminSupportTickets : null;
-    if (col) {
-      await col.updateOne(
-        { id: String(ticketId).trim() },
-        { $set: { userTypingAt: new Date(), userLastSeenAt: new Date() } }
-      );
-    }
-    return res.json({ ok: true });
-  } catch (_) { return res.json({ ok: true }); }
-});
-
-// ── Public: user online ping ───────────────────────────────────────────────────
-app.post('/api/support/ticket/:ticketId/ping', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    if (!ticketId) return res.status(400).json({ message: 'ticketId required' });
-    const { getCollections } = require('./lib/db');
-    const cols = getCollections ? getCollections() : null;
-    const col = cols ? cols.adminSupportTickets : null;
-    if (col) {
-      await col.updateOne(
-        { id: String(ticketId).trim() },
-        { $set: { userLastSeenAt: new Date() } }
-      );
-    }
-    return res.json({ ok: true });
-  } catch (_) { return res.json({ ok: true }); }
-});
-
-// ── Public: user closes ticket ────────────────────────────────────────────────
-app.post('/api/support/ticket/:ticketId/close', async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    if (!ticketId) return res.status(400).json({ message: 'ticketId required' });
-    const { getCollections } = require('./lib/db');
-    const cols = getCollections ? getCollections() : null;
-    const col = cols ? cols.adminSupportTickets : null;
-    if (col) {
-      await col.updateOne(
-        { id: String(ticketId).trim() },
-        { $set: { status: 'CLOSED', closedAt: new Date(), updatedAt: new Date() } }
-      );
-    }
-    return res.json({ ok: true });
-  } catch (_) { return res.json({ ok: false }); }
-});
-
-// ── Admin: mark typing (so user sees "Support is typing...") ─────────────────
-app.post('/api/admin/support/ticket/:ticketId/typing', requiresAdminSession, async (req, res) => {
-  try {
-    const { ticketId } = req.params;
-    const { getCollections } = require('./lib/db');
-    const cols = getCollections ? getCollections() : null;
-    const col = cols ? cols.adminSupportTickets : null;
-    if (col) {
-      await col.updateOne(
-        { id: String(ticketId).trim() },
-        { $set: { adminTypingAt: new Date() } }
-      );
-    }
-    return res.json({ ok: true });
-  } catch (_) { return res.json({ ok: true }); }
-});
-
 app.get('/admin-login', (req, res) => {
   return res.redirect('/admin/login');
 });
 
 app.get('/admin/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin-login.html'));
+  res.sendFile(path.join(__dirname, 'public', 'bitegit-admin-login.html'));
 });
 
 app.get('/bitegit-admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin-login.html'));
+  res.sendFile(path.join(__dirname, 'public', 'bitegit-admin-login.html'));
 });
 
 app.get('/admin', async (req, res) => {
@@ -5682,164 +3249,35 @@ app.get('/admin', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'gate-home.html'));
-});
-app.get('/home', (req, res) => {
-  res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 app.get('/markets', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'markets.html'));
 });
 app.get('/assets', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'assets', 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'assets.html'));
 });
 app.get('/chart', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'chart.html'));
-});
-app.get('/chart.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'chart.html'));
 });
 app.get('/auth', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'auth.html'));
 });
-
-// Embed version of auth — no header/hamburger/drawer for Byit iframe
-app.get('/auth-embed', (req, res) => {
-  const fs = require('fs');
-  const qs = require('querystring');
-  let html = fs.readFileSync(path.join(__dirname, 'public', 'auth.html'), 'utf8');
-  // Pass through redirect param
-  // Sanitize redirect to prevent open-redirect attacks (must be relative path only)
-  let redirect = String(req.query.redirect || '/p2p-embed').trim();
-  if (!redirect.startsWith('/') || redirect.startsWith('//') || /^\/[a-z]+:/i.test(redirect)) {
-    redirect = '/p2p-embed';
-  }
-  html = html.replace('</head>',
-    `<style>
-      .auth-topbar, header.auth-topbar,
-      #authMenuToggle, .auth-icon-btn,
-      .auth-brand, a.auth-brand,
-      #authNavDrawer, #authNavOverlay,
-      .auth-nav-drawer, .auth-nav-overlay,
-      .auth-nav-head, .auth-nav-links {
-        display: none !important;
-      }
-      .auth-main { padding-top: 0 !important; }
-    </style>
-    <script>
-      // After login/signup success, stay in embed context
-      window._embedRedirect = ${JSON.stringify(redirect)};
-    </script>
-    </head>`);
-  // After login success, redirect back to p2p-embed not /p2p
-  html = html.replace(/window\.location\.href\s*=\s*['"]\/p2p['"]/g, `window.location.href = '/p2p-embed'`);
-  html = html.replace(/window\.location\.replace\s*\(\s*['"]\/p2p['"]\s*\)/g, `window.location.replace('/p2p-embed')`);
-  res.setHeader('Content-Type', 'text/html');
-  res.send(html);
+app.get('/login', (req, res) => {
+  // /login is a canonical alias for /auth — preserves query string
+  const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  res.redirect(301, '/auth' + qs);
 });
 app.get('/p2p', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'p2p.html'));
 });
 
-// Embed version — strips main header and desktop subnav so Byit app can iframe it cleanly
-app.get('/p2p-embed', (req, res) => {
-  const fs = require('fs');
-  let html = fs.readFileSync(path.join(__dirname, 'public', 'p2p.html'), 'utf8');
-  // Remove the main BITEGIT header
-  html = html.replace(/<header class="p2p-header"[\s\S]*?<\/header>/m, '');
-  // Remove the desktop subnav (Orders/My Ads/Profile tabs only shown on desktop)
-  html = html.replace(/<nav class="p2p-subnav"[\s\S]*?<\/nav>/m, '');
-  // Remove has-mobile-nav body class and mobile-nav css
-  html = html.replace('has-mobile-nav', '');
-  html = html.replace(/<link[^>]*mobile-nav\.css[^>]*>/g, '');
-  // Remove mobile nav drawer (has BITEGIT brand + hamburger links)
-  html = html.replace(/<div id="p2pNavOverlay"[\s\S]*?<\/aside>/m, '');
-  // Remove the auth modal's internal header/brand if present
-  html = html.replace(/<link[^>]*mobile-nav\.css[^>]*>/g, '');
-  // Hide via CSS: any leftover brand, hamburger, drawer, mobile nav bar, auth modal header
-  html = html.replace('</head>',
-    `<style>
-      .cf-mobile-nav,.mobile-nav-bar,[data-mobile-nav],
-      .p2p-header,.p2p-subnav,.p2p-nav-drawer,.p2p-nav-overlay,
-      .p2p-hamburger,.p2p-brand,.p2p-brand-wrap,
-      #p2pHeader,#p2pNavDrawer,#p2pNavOverlay,#p2pMenuToggle,
-      .p2p-drawer-head,.p2p-drawer-links,.p2p-drawer-actions,
-      .auth-topbar,.auth-brand,.auth-icon-btn,#authMenuToggle,
-      .auth-nav-drawer,.auth-nav-overlay,.auth-nav-head,.auth-nav-links {
-        display:none!important;
-      }
-    </style>
-    <script>
-      // Intercept all iframe navigations to /auth → redirect to /auth-embed
-      (function() {
-        var _push = history.pushState;
-        var _replace = history.replaceState;
-        function fixUrl(url) {
-          if (!url) return url;
-          var s = String(url);
-          if (s.startsWith('/auth') && !s.startsWith('/auth-embed')) {
-            return s.replace(/^\/auth/, '/auth-embed');
-          }
-          return s;
-        }
-        history.pushState = function(a,b,url) { return _push.call(this,a,b,fixUrl(url)); };
-        history.replaceState = function(a,b,url) { return _replace.call(this,a,b,fixUrl(url)); };
-        document.addEventListener('click', function(e) {
-          var a = e.target.closest('a[href]');
-          if (a) {
-            var href = a.getAttribute('href');
-            if (href && href.startsWith('/auth') && !href.startsWith('/auth-embed')) {
-              e.preventDefault();
-              window.location.href = href.replace(/^\/auth/, '/auth-embed');
-            }
-          }
-        }, true);
-        // Override window.location.href assignments that p2p.js might do
-        var origAssign = window.location.assign.bind(window.location);
-        window.location.assign = function(url) {
-          if (url && String(url).startsWith('/auth') && !String(url).startsWith('/auth-embed'))
-            url = String(url).replace(/^\/auth/, '/auth-embed');
-          origAssign(url);
-        };
-      })();
-    </script>
-    </head>`);
-  res.setHeader('Content-Type', 'text/html');
-  res.send(html);
-});
-
-app.get('/p2p-order-flow', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'p2p-order-flow.html'));
-});
 app.get('/p2p-buy', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'p2p-buy.html'));
 });
-app.get('/wallet', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'wallet.html'));
-});
-app.get('/p2p-chat', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'p2p-chat.html'));
-});
-app.get('/p2p-order-history', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'p2p-order-history.html'));
-});
-app.get('/p2p-sell-flow', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'p2p-sell-flow.html'));
-});
-app.get('/p2p-user-center', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'p2p-user-center.html'));
-});
 
 app.get('/kyc', (req, res) => {
-  res.redirect('/p2p#kyc');
-});
-
-app.get('/earn', (req, res) => {
-  res.redirect('/');
-});
-
-app.get('/rewards', (req, res) => {
-  res.redirect('/p2p#rewards');
+  res.sendFile(path.join(__dirname, 'public', 'kyc.html'));
 });
 
 app.get('/trade', (req, res) => {
@@ -6007,11 +3445,6 @@ function registerShutdownHandlers() {
       shuttingDown = true;
       console.log(`${signal} received, shutting down HTTP server...`);
 
-      if (bootRetryTimer) {
-        clearTimeout(bootRetryTimer);
-        bootRetryTimer = null;
-      }
-
       if (p2pExpirySweepTimer) {
         clearInterval(p2pExpirySweepTimer);
         p2pExpirySweepTimer = null;
@@ -6083,31 +3516,57 @@ function registerShutdownHandlers() {
   });
 }
 
+let _bootStarted = false; // hard once-only guard — second call is a no-op
+
 async function boot() {
+  if (_bootStarted) {
+    console.warn('[boot] boot() called more than once — ignoring duplicate call');
+    return;
+  }
+  _bootStarted = true;
+
   try {
-    if (!httpServer) {
+    await new Promise((resolve, reject) => {
       httpServer = app.listen(PORT, '0.0.0.0', () => {
-        console.log(`Server running on port ${PORT}`);
+        console.log(`[boot] Server started — PID ${process.pid} on port ${PORT}`);
+        // Attach WebSocket server for real-time order push
+        const wss = new WebSocketServer({ server: httpServer, path: '/ws/p2p' });
+        wss.on('connection', async (ws, req) => {
+          const user = await getP2PUserFromRequest(req).catch(() => null);
+          if (!user) { ws.close(4401, 'Unauthorized'); return; }
+          const uid = String(user.id);
+          const clients = getWsClients(uid);
+          clients.add(ws);
+          ws.send(JSON.stringify({ event: 'connected', data: { userId: uid } }));
+          ws.on('close', () => clients.delete(ws));
+          ws.on('error', () => clients.delete(ws));
+        });
+        resolve();
       });
-      registerShutdownHandlers();
-    }
+      httpServer.once('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          console.error(`[boot] FATAL: port ${PORT} already in use — another instance is running`);
+          console.error(`[boot] Kill it:  lsof -ti:${PORT} | xargs kill -9`);
+        } else {
+          console.error(`[boot] Listen error: ${err.message}`);
+        }
+        process.exit(1); // never retry — exit and let the process manager handle it
+      });
+    });
+    registerShutdownHandlers();
 
     validateStartupConfig();
+    tokenService.ensureJwtSecret();
     const mongoConfig = getMongoConfig();
     console.log(`MongoDB target URI: ${mongoConfig.maskedUri}`);
     console.log('Environment loader: dotenv');
 
     await connectToMongo();
     const collections = getCollections();
-    // Load (or generate) a persistent JWT secret from MongoDB so it
-    // survives every deploy even if JWT_SECRET env var is not set.
-    await tokenService.initJwtSecret(collections);
     repos = createRepositories(collections);
     auditLogService = createAuditLogService(collections);
     authEmailService = createAuthEmailService();
     p2pEmailService = createP2PEmailService();
-    app.set('authEmailService', authEmailService);
-    app.set('p2pEmailService', p2pEmailService);
     logEmailProviderRuntimeEnv();
     walletService = createWalletService(collections, getMongoClient(), {
       hooks: {
@@ -6143,27 +3602,6 @@ async function boot() {
       }
     });
     p2pOrderExpiryService = createP2POrderExpiryService({ walletService });
-
-    // Load merchant applications from MongoDB into in-memory map
-    try {
-      const savedApps = await collections.merchantApplications.find({}).toArray();
-      for (const doc of savedApps) {
-        merchantApplications.set(doc.id, doc);
-        const num = parseInt(String(doc.id || '').replace('MRC-', ''), 10);
-        if (!isNaN(num) && num >= merchantAppCounter) merchantAppCounter = num + 1;
-      }
-      console.log(`[merchants] loaded ${savedApps.length} applications from MongoDB`);
-    } catch (e) {
-      console.error('[merchants] failed to load from MongoDB:', e.message);
-    }
-
-    // Run expireOrders in background every 30 seconds — NOT on each request
-    setInterval(async () => {
-      try { await walletService.expireOrders(); } catch(e) { /* ignore */ }
-    }, 30 * 1000);
-    // Run once immediately on boot
-    walletService.expireOrders().catch(() => {});
-
     authMiddleware = createAuthMiddleware({
       verifyAccessToken: tokenService.verifyAccessToken,
       resolveLegacyUser: async (req) => {
@@ -6183,9 +3621,6 @@ async function boot() {
       }
     });
 
-    // Wrap optional service initialization so a failure here does NOT
-    // prevent p2pOrderController / adminControllers from being set below.
-    try {
     const otpAuthConfig = readAuthOtpConfig();
     const geetestService = createGeetestService(otpAuthConfig.geetest);
 
@@ -6206,7 +3641,6 @@ async function boot() {
       p2pUserTtlMs: P2P_USER_TTL_MS,
       auditLogService,
       authEmailService,
-      collections,
       captchaVerifier: geetestService,
       otpTtlMs: SIGNUP_OTP_TTL_MS,
       enableLegacyOtpEndpoints: false,
@@ -6217,15 +3651,6 @@ async function boot() {
         await userCenterService.recordLoginEvent(user, {
           ip: ipAddress,
           device: userAgent
-        });
-      },
-      onRegisterSuccess: async ({ user }) => {
-        broadcastAdminNewUserEvent({
-          type: 'new_user',
-          userId: user.id,
-          email: user.email,
-          username: user.username,
-          ts: Date.now()
         });
       }
     });
@@ -6240,7 +3665,7 @@ async function boot() {
         otpConfig: otpAuthConfig.otp
       });
 
-    if (otpAuthConfig.mysql && otpAuthConfig.mysql.enabled) {
+    if (otpAuthConfig.mysql.enabled) {
       try {
         otpAuthStore = createMySqlAuthStore(otpAuthConfig.mysql);
         await otpAuthStore.initialize();
@@ -6284,7 +3709,7 @@ async function boot() {
     });
 
     const userCenterConfig = readUserCenterConfig();
-    if (userCenterConfig.mysql && userCenterConfig.mysql.enabled) {
+    if (userCenterConfig.mysql.enabled) {
       try {
         userCenterStore = createUserCenterStore(userCenterConfig.mysql);
         await userCenterStore.initialize();
@@ -6321,7 +3746,7 @@ async function boot() {
       console.warn(`[social-feed] ${reason}. Using in-memory fallback store for live feed APIs.`);
     }
 
-    if (socialFeedConfig.mysql && socialFeedConfig.mysql.enabled) {
+    if (socialFeedConfig.mysql.enabled) {
       try {
         socialFeedStore = createSocialFeedStore(socialFeedConfig.mysql);
         await socialFeedStore.initialize();
@@ -6347,144 +3772,108 @@ async function boot() {
       getP2PUserFromRequest,
       requiresAdminSession
     });
-    } catch (_bootOptionalErr) {
-      console.error('[boot] Optional service setup error (continuing):', _bootOptionalErr?.message || _bootOptionalErr);
-    }
 
-    try {
-      p2pOrderController = createP2POrderController({
-        repos,
-        walletService,
-        orderTtlMs: P2P_ORDER_TTL_MS,
-        p2pEmailService,
-        broadcastUserEvent
-      });
-      // One active order per user check + KYC gate
-      app.post('/api/p2p/orders', requiresP2PUser, async (req, res, next) => {
-        // Prevent a buyer from placing a new order while they already have one in progress.
-        try {
-          const userId = String(req.p2pUser?.id || '').trim();
-          if (userId) {
-            const cols = getCollections();
-            const now = Date.now();
-            const activeCount = await cols.p2pOrders.countDocuments({
-              buyerUserId: userId,
-              status: { $in: ['CREATED', 'PAYMENT_SENT', 'PAID'] },
-              expiresAt: { $gt: now }
-            });
-            if (activeCount >= 1) {
-              return res.status(400).json({ success: false, message: 'You already have an active order. Complete or cancel it first.' });
-            }
-          }
-        } catch (_) {}
-        next();
-      });
-      registerP2POrderRoutes(app, {
-        requiresP2PUser,
-        controller: p2pOrderController
-      });
-      console.log('[boot] P2P order controller ready');
-    } catch (_p2pErr) {
-      console.error('[boot] CRITICAL: P2P order controller setup failed:', _p2pErr?.message, _p2pErr?.stack);
-    }
+    p2pOrderController = createP2POrderController({
+      repos,
+      walletService,
+      orderTtlMs: P2P_ORDER_TTL_MS,
+      p2pEmailService,
+      broadcastUserEvent
+    });
+    registerP2POrderRoutes(app, {
+      requiresP2PUser,
+      controller: p2pOrderController
+    });
 
-    try {
-      adminStore = createAdminStore({
-        collections,
-        repos,
-        walletService,
-        tokenService,
-        isDbConnected
-      });
-      adminAuthMiddleware = createAdminAuthMiddleware({
-        adminStore,
-        cookieNames: {
-          accessToken: ADMIN_ACCESS_COOKIE_NAME,
-          refreshToken: ADMIN_REFRESH_COOKIE_NAME
-        }
-      });
-      adminControllers = createAdminControllers({
-        adminStore,
-        auth: adminAuthMiddleware,
-        repos,
-        setCookie,
-        clearCookie,
-        cookieNames: {
-          accessToken: ADMIN_ACCESS_COOKIE_NAME,
-          refreshToken: ADMIN_REFRESH_COOKIE_NAME
-        },
-        userCookieNames: {
-          accessToken: P2P_ACCESS_COOKIE_NAME,
-          refreshToken: P2P_REFRESH_COOKIE_NAME,
-          legacyP2PSession: P2P_USER_COOKIE_NAME
-        },
-        tokenService,
-        buildP2PUserFromEmail,
-        createLegacyP2PUserSession: createP2PUserSession,
-        p2pUserTtlMs: P2P_USER_TTL_MS
-      });
-      registerAdminRoutes(app, {
-        adminStore,
-        adminAuthMiddleware,
-        adminControllers,
-        auditLogService,
-        collections
-      });
-      const extendedStore = createAdminExtendedStore({ collections });
-      registerAdminExtendedRoutes(app, {
-        adminStore,
-        extendedStore,
-        adminAuthMiddleware
-      });
-      console.log('[boot] Admin controllers ready');
-    } catch (_adminErr) {
-      console.error('[boot] CRITICAL: Admin controller setup failed:', _adminErr?.message, _adminErr?.stack);
-    }
+    adminStore = createAdminStore({
+      collections,
+      repos,
+      walletService,
+      tokenService,
+      isDbConnected
+    });
 
-    try { await repos.ensureIndexes(); await adminStore.ensureIndexes(); console.log('MongoDB indexes ensured'); } catch (_idxErr) { console.error('[boot] ensureIndexes failed (non-fatal):', _idxErr?.message); }
-
-    try {
-      const migration = await repos.migrateLegacyLeadsJsonOnce(dataFile);
-      if (migration.migrated) {
-        console.log(`Legacy leads migration completed. Imported ${migration.imported || 0} rows.`);
-      } else {
-        console.log(`Legacy leads migration skipped (${migration.reason || 'n/a'}).`);
+    adminAuthMiddleware = createAdminAuthMiddleware({
+      adminStore,
+      cookieNames: {
+        accessToken: ADMIN_ACCESS_COOKIE_NAME,
+        refreshToken: ADMIN_REFRESH_COOKIE_NAME
       }
-    } catch (_migErr) { console.error('[boot] migration failed (non-fatal):', _migErr?.message); }
+    });
 
-    try { await repos.ensureSeedOffers([]); } catch (_seedErr) { console.error('[boot] ensureSeedOffers failed (non-fatal):', _seedErr?.message); }
+    adminControllers = createAdminControllers({
+      adminStore,
+      auth: adminAuthMiddleware,
+      repos,
+      setCookie,
+      clearCookie,
+      cookieNames: {
+        accessToken: ADMIN_ACCESS_COOKIE_NAME,
+        refreshToken: ADMIN_REFRESH_COOKIE_NAME
+      },
+      userCookieNames: {
+        accessToken: P2P_ACCESS_COOKIE_NAME,
+        refreshToken: P2P_REFRESH_COOKIE_NAME,
+        legacyP2PSession: P2P_USER_COOKIE_NAME
+      }
+    });
 
-    try {
-      await adminStore.ensureDefaults();
-      const enableDemoSeedData =
-        String(process.env.ENABLE_DEMO_SEED_DATA || '')
+    registerAdminRoutes(app, {
+      adminStore,
+      adminAuthMiddleware,
+      adminControllers,
+      auditLogService
+    });
+
+    const extendedStore = createAdminExtendedStore({ collections });
+    registerAdminExtendedRoutes(app, {
+      adminStore,
+      extendedStore,
+      adminAuthMiddleware
+    });
+
+    await repos.ensureIndexes();
+    await adminStore.ensureIndexes();
+    console.log('MongoDB indexes ensured');
+
+    const migration = await repos.migrateLegacyLeadsJsonOnce(dataFile);
+    if (migration.migrated) {
+      console.log(`Legacy leads migration completed. Imported ${migration.imported || 0} rows.`);
+    } else {
+      console.log(`Legacy leads migration skipped (${migration.reason || 'n/a'}).`);
+    }
+
+    await repos.ensureSeedOffers([]);
+
+    await adminStore.ensureDefaults();
+    const enableDemoSeedData =
+      String(process.env.ENABLE_DEMO_SEED_DATA || '')
+        .trim()
+        .toLowerCase() === 'true';
+    if (enableDemoSeedData) {
+      await adminStore.ensureDemoSupportTicket();
+    }
+    const seededAdmin = await adminStore.seedAdminUser({
+      username: ADMIN_SEED_USERNAME,
+      email: ADMIN_SEED_EMAIL,
+      password: ADMIN_PASSWORD,
+      role: ADMIN_SEED_ROLE,
+      forcePasswordSync:
+        String(process.env.ADMIN_FORCE_PASSWORD_SYNC || '')
           .trim()
-          .toLowerCase() === 'true';
-      if (enableDemoSeedData) {
-        await adminStore.ensureDemoSupportTicket();
-      }
-      const seededAdmin = await adminStore.seedAdminUser({
-        username: ADMIN_SEED_USERNAME,
-        email: ADMIN_SEED_EMAIL,
-        password: ADMIN_PASSWORD,
-        role: ADMIN_SEED_ROLE,
-        forcePasswordSync:
-          String(process.env.ADMIN_FORCE_PASSWORD_SYNC || '')
-            .trim()
-            .toLowerCase() === 'true',
-        forceRoleSync:
-          String(process.env.ADMIN_FORCE_ROLE_SYNC || '')
-            .trim()
-            .toLowerCase() === 'true',
-        forceActivate:
-          String(process.env.ADMIN_FORCE_ACTIVATE || '')
-            .trim()
-            .toLowerCase() === 'true'
-      });
-      if (seededAdmin) {
-        console.log(`Admin seed ensured for ${seededAdmin.email} (${seededAdmin.role})`);
-      }
-    } catch (_adminSeedErr) { console.error('[boot] adminStore defaults/seed failed (non-fatal):', _adminSeedErr?.message); }
+          .toLowerCase() === 'true',
+      forceRoleSync:
+        String(process.env.ADMIN_FORCE_ROLE_SYNC || '')
+          .trim()
+          .toLowerCase() === 'true',
+      forceActivate:
+        String(process.env.ADMIN_FORCE_ACTIVATE || '')
+          .trim()
+          .toLowerCase() === 'true'
+    });
+    if (seededAdmin) {
+      console.log(`Admin seed ensured for ${seededAdmin.email} (${seededAdmin.role})`);
+    }
 
     app.use(apiNotFoundHandler);
 
@@ -6502,6 +3891,16 @@ async function boot() {
         const result = await p2pOrderExpiryService.runExpirySweep();
         if (result.cancelledCount > 0) {
           console.log(`Auto-cancelled expired P2P orders: ${result.cancelledCount}`);
+          // Broadcast real-time update to affected buyers and sellers
+          if (Array.isArray(result.orders)) {
+            for (const o of result.orders) {
+              const payload = { orderId: o.id, status: 'EXPIRED' };
+              const sellId = o.sellerUserId;
+              const buyId = o.buyerUserId;
+              if (sellId) broadcastUserEvent(sellId, 'order_updated', payload);
+              if (buyId && buyId !== sellId) broadcastUserEvent(buyId, 'order_updated', payload);
+            }
+          }
         }
       } catch (error) {
         console.error('Failed to run P2P expiry sweep:', error.message);
@@ -6514,26 +3913,27 @@ async function boot() {
     persistenceReady = true;
     console.log(`MongoDB connected to ${mongoConfig.dbName}`);
   } catch (error) {
-    console.error('Failed to start server:', error.message);
-    if (!IS_PRODUCTION && error.stack) {
-      console.error(error.stack);
-    }
-
-    if (!persistenceReady && !bootRetryTimer) {
-      bootRetryTimer = setTimeout(() => {
-        bootRetryTimer = null;
-        boot().catch((bootError) => {
-          console.error('Boot retry failed:', bootError?.message || bootError);
-        });
-      }, 15000);
-      if (typeof bootRetryTimer.unref === 'function') {
-        bootRetryTimer.unref();
-      }
-      console.log('Will retry startup in 15 seconds...');
-    }
+    console.error('[boot] Fatal startup error:', error.message);
+    if (error.stack) console.error(error.stack);
+    process.exit(1); // no retry — fail fast, let the process manager restart if needed
   }
 }
 
-boot();
+// ── Always export so require('./server') works from any file ──────────────
+module.exports = { app, boot };
 
-
+// ── Entry-point guard ──────────────────────────────────────────────────────
+// boot() must run ONLY when server.js is the DIRECT entry point.
+//   node server.js          → require.main === module → TRUE  → boot() called here
+//   require('./server')     → require.main === module → FALSE → boot() NOT called here
+//                                                               caller calls it explicitly
+//
+// This prevents the duplicate app.listen(PORT) that causes EADDRINUSE:
+//   Without this guard: index.js does require('./server') which executes boot()
+//   AND node server.js also executes boot() → two listeners on the same port.
+if (require.main === module) {
+  boot().catch((err) => {
+    console.error('[boot] Unhandled startup error:', err?.message || err);
+    process.exit(1);
+  });
+}
