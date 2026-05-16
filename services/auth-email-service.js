@@ -110,10 +110,14 @@ function resolveTransportConfig() {
   const providers = [];
 
   if (resendApiKey && resendFromEmail) {
+    // RESEND_REPLY_TO: if set, emails go FROM resendFromEmail but Reply-To is the inbound address
+    // This allows FROM=support@bitegit.com (verified) + Reply-To=support@mail.bitegit.com (inbound)
+    const resendReplyTo = firstNonEmptyEnv(process.env.RESEND_REPLY_TO, process.env.RESEND_INBOUND_EMAIL) || '';
     providers.push({
       provider: 'resend',
       resendApiKey,
-      fromEmail: resendFromEmail
+      fromEmail: resendFromEmail,
+      replyTo: resendReplyTo
     });
   }
 
@@ -179,7 +183,8 @@ async function sendViaProvider({ to, subject, text, html }) {
             to: [to],
             subject,
             html,
-            text
+            text,
+            ...(provider.replyTo ? { reply_to: provider.replyTo } : {})
           })
         });
 
