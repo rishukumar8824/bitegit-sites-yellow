@@ -1874,6 +1874,16 @@ function updateUserUi() {
     logoutBtn.style.display = currentUser ? 'inline-flex' : 'none';
   }
 
+  // Show/hide nav elements based on login state
+  // Elements with data-auth-guest-only → visible when logged OUT
+  // Elements with data-auth-user-only  → visible when logged IN
+  document.querySelectorAll('[data-auth-guest-only]').forEach(function(el) {
+    el.style.display = currentUser ? 'none' : '';
+  });
+  document.querySelectorAll('[data-auth-user-only]').forEach(function(el) {
+    el.style.display = currentUser ? '' : 'none';
+  });
+
   if (!currentUser) {
     if (myAdsList) {
       myAdsList.innerHTML = '<p class="empty-row">Login required to view your ads.</p>';
