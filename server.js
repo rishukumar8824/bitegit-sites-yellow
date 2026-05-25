@@ -5494,19 +5494,18 @@ app.post('/api/support/ticket/:ticketId/user-reply', supportRateLimit, async (re
   }
 });
 
-app.get('/admin-login', (req, res) => {
-  return res.redirect('/admin/login');
-});
+// ── Legacy admin URLs → 404 (security: hide admin panel location) ──
+app.get('/admin-login', (req, res) => res.status(404).send('Not Found'));
+app.get('/admin/login', (req, res) => res.status(404).send('Not Found'));
+app.get('/bitegit-admin', (req, res) => res.status(404).send('Not Found'));
 
-app.get('/admin/login', (req, res) => {
+// ── Secret admin login URL ──
+const ADMIN_SECRET_PATH = process.env.ADMIN_SECRET_PATH || 'bg-secure-panel-x9k2';
+app.get(`/${ADMIN_SECRET_PATH}/login`, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin-login.html'));
 });
 
-app.get('/bitegit-admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin-login.html'));
-});
-
-app.get('/admin', async (req, res) => {
+app.get(`/admin`, async (req, res) => {
   try {
     const cookies = parseCookies(req);
     const legacySessionToken = String(cookies[SESSION_COOKIE_NAME] || '').trim();
@@ -5515,21 +5514,21 @@ app.get('/admin', async (req, res) => {
     if (!hasLegacySession && adminAuthMiddleware) {
       const accessToken = String(cookies[ADMIN_ACCESS_COOKIE_NAME] || '').trim();
       if (!accessToken) {
-        return res.redirect('/admin/login');
+        return res.status(404).send('Not Found');
       }
 
       try {
         await adminStore.verifyAdminAccessToken(accessToken);
       } catch (error) {
-        return res.redirect('/admin/login');
+        return res.status(404).send('Not Found');
       }
     } else if (!hasLegacySession && !adminAuthMiddleware) {
-      return res.redirect('/admin/login');
+      return res.status(404).send('Not Found');
     }
 
     return res.sendFile(path.join(__dirname, 'public', 'admin-dashboard.html'));
   } catch (error) {
-    return res.redirect('/admin/login');
+    return res.status(404).send('Not Found');
   }
 });
 
