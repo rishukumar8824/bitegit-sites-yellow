@@ -1252,6 +1252,11 @@ const loginAttemptLimiter = createIpAttemptLimiter({
   windowMs: 10 * 60 * 1000   // 5 attempts per 10 minutes
 });
 
+// OTP send limiter — 3 per IP per 10 min (forgot-password + signup send-code)
+const otpSendLimiter = createIpAttemptLimiter({ maxAttempts: 3, windowMs: 10 * 60 * 1000 });
+// OTP verify limiter — 10 per IP per 5 min (reset-password brute force)
+const otpVerifyLimiter = createIpAttemptLimiter({ maxAttempts: 10, windowMs: 5 * 60 * 1000 });
+
 async function createSession() {
   const token = createToken();
   await repos.createAdminSession(token, Date.now() + SESSION_TTL_MS);
@@ -1989,6 +1994,12 @@ app.post('/api/p2p/login', async (req, res) => {
 });
 
 app.post('/api/signup/send-code', async (req, res) => {
+  // Rate limit: 3 OTP sends per IP per 10 min — prevents email bombing
+  const ipCheck = otpSendLimiter(`otp_send:${getRequestIp(req)}`);
+  if (!ipCheck.allowed) {
+    res.setHeader('Retry-After', String(ipCheck.retryAfterSeconds));
+    return res.status(429).json({ message: 'Too many OTP requests. Please wait before trying again.' });
+  }
   const contactInfo = normalizeSignupContact(req.body.contact);
   if (!contactInfo) {
     return res.status(400).json({ message: 'Enter a valid email or 10-digit mobile number.' });
@@ -2093,6 +2104,12 @@ app.post('/api/signup/verify-code', async (req, res) => {
 
 // ===== P2P PASSWORD RESET =====
 app.post('/api/p2p/forgot-password', async (req, res) => {
+  // Rate limit: 3 per IP per 10 min — prevents email bombing & OTP brute force
+  const ipCheck = otpSendLimiter(`forgot_pwd:${getRequestIp(req)}`);
+  if (!ipCheck.allowed) {
+    res.setHeader('Retry-After', String(ipCheck.retryAfterSeconds));
+    return res.status(429).json({ message: 'Too many reset requests. Please wait before trying again.' });
+  }
   if (!repos) return res.status(503).json({ message: 'Service unavailable.' });
   const email = String(req.body.email || '').trim().toLowerCase();
   if (!email || !email.includes('@')) return res.status(400).json({ message: 'Valid email required.' });
@@ -2111,6 +2128,12 @@ app.post('/api/p2p/forgot-password', async (req, res) => {
 });
 
 app.post('/api/p2p/reset-password', async (req, res) => {
+  // Rate limit: 10 per IP per 5 min — prevents OTP brute force (1M combos)
+  const ipCheck = otpVerifyLimiter(`reset_pwd:${getRequestIp(req)}`);
+  if (!ipCheck.allowed) {
+    res.setHeader('Retry-After', String(ipCheck.retryAfterSeconds));
+    return res.status(429).json({ message: 'Too many attempts. Please wait before trying again.' });
+  }
   if (!repos) return res.status(503).json({ message: 'Service unavailable.' });
   const email = String(req.body.email || '').trim().toLowerCase();
   const code = String(req.body.code || '').trim();
@@ -2119,8 +2142,18 @@ app.post('/api/p2p/reset-password', async (req, res) => {
   if (newPassword.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters.' });
   try {
     const otp = await repos.getSignupOtp(email, { purpose: 'p2p_password_reset' });
-    if (!otp || otp.code !== code || new Date(otp.expiresAt) < new Date()) {
+    if (!otp || new Date(otp.expiresAt) < new Date()) {
       return res.status(400).json({ message: 'Invalid or expired reset code.' });
+    }
+    // Track failed attempts — invalidate OTP after 5 wrong guesses
+    if (otp.code !== code) {
+      const attempts = Number(otp.attempts || 0) + 1;
+      if (attempts >= 5) {
+        await repos.deleteSignupOtp(email, { purpose: 'p2p_password_reset' });
+        return res.status(400).json({ message: 'Too many failed attempts. Request a new reset code.' });
+      }
+      await repos.upsertSignupOtp(email, { ...otp, attempts }, { purpose: 'p2p_password_reset' });
+      return res.status(400).json({ message: 'Invalid reset code.' });
     }
     const hash = repos.hashPassword(newPassword);
     await repos.updateP2PCredentialPassword(email, hash);
@@ -3142,7 +3175,7 @@ app.get('/api/p2p/klines', async (req, res) => {
   }
 });
 
-app.post('/api/trade/orders', async (req, res) => {
+app.post('/api/trade/orders', requiresP2PUser, async (req, res) => {
   const symbol = normalizeMarketSymbol(req.body.symbol);
   const market = String(req.body.market || 'spot')
     .trim()
@@ -3208,7 +3241,7 @@ app.post('/api/trade/orders', async (req, res) => {
   }
 });
 
-app.get('/api/trade/orders', async (req, res) => {
+app.get('/api/trade/orders', requiresP2PUser, async (req, res) => {
   try {
     const [orders, total] = await Promise.all([repos.listTradeOrders(30), repos.countTradeOrders()]);
     return res.json({
