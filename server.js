@@ -429,8 +429,17 @@ const socialFeedBootstrapService = createSocialFeedService({
 });
 
 const validation = validationRules();
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+// Default body limit: 50kb for most routes (prevents DoS)
+// KYC and P2P image routes get a larger limit applied inline
+app.use((req, res, next) => {
+  const isImageRoute = (
+    req.path.includes('/kyc') ||
+    req.path.includes('/orders') ||   // P2P chat images
+    req.path.includes('/profile')     // avatar
+  );
+  return express.json({ limit: isImageRoute ? '5mb' : '100kb' })(req, res, next);
+});
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use(sanitizeRequestPayload);
 applySecurityHardening(app);
 
@@ -4916,7 +4925,25 @@ app.post('/api/p2p/orders/:orderId/messages', requiresP2PUser, async (req, res) 
   // Sanitize: strip all HTML tags and event handlers from chat text
   const rawText = String(req.body.text || '').trim();
   const text    = rawText.replace(/<[^>]+>/g, '').replace(/on\w+=\S+/gi, '').replace(/javascript\s*:/gi, '').trim().slice(0, 1000);
-  const imageBase64 = req.body.imageBase64 || null;
+  const rawImage = req.body.imageBase64 || null;
+
+  // Validate imageBase64: must be valid image MIME, max ~3MB (4MB base64 ≈ 3MB binary)
+  let imageBase64 = null;
+  if (rawImage) {
+    const imgStr = String(rawImage);
+    const matched = imgStr.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]{1,4200000})$/);
+    if (!matched) {
+      return res.status(400).json({ message: 'Invalid image format. Must be a base64 image.' });
+    }
+    const mimeType = matched[1].toLowerCase();
+    if (!['image/png','image/jpeg','image/jpg','image/webp','image/gif'].includes(mimeType)) {
+      return res.status(400).json({ message: 'Only PNG, JPEG, WEBP, GIF images are allowed.' });
+    }
+    if (imgStr.length > 4_200_000) {  // ~3MB decoded
+      return res.status(400).json({ message: 'Image too large. Maximum size is 3MB.' });
+    }
+    imageBase64 = imgStr;
+  }
 
   if (!text && !imageBase64) {
     return res.status(400).json({ message: 'Message text or image is required.' });
