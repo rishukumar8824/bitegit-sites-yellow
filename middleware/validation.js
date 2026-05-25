@@ -1,5 +1,22 @@
 const MONGO_OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
 
+/* ── Strip HTML/script tags and dangerous attributes from a string ── */
+function stripHtml(str) {
+  return str
+    // Remove <script>...</script> blocks (including multiline)
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    // Remove <style>...</style> blocks
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+    // Remove on* event handlers (onerror=, onclick=, etc.)
+    .replace(/\bon\w+\s*=\s*(['"]?)[^'">\s]*/gi, '')
+    // Remove javascript: and data: URIs
+    .replace(/(?:javascript|data|vbscript)\s*:/gi, '')
+    // Remove all remaining HTML tags
+    .replace(/<[^>]+>/g, '')
+    // Trim whitespace
+    .trim();
+}
+
 function sanitizeValue(input) {
   if (Array.isArray(input)) {
     return input.map((item) => sanitizeValue(item));
@@ -14,6 +31,11 @@ function sanitizeValue(input) {
       cleaned[key] = sanitizeValue(value);
     }
     return cleaned;
+  }
+
+  // Strip HTML from all string values
+  if (typeof input === 'string') {
+    return stripHtml(input);
   }
 
   return input;

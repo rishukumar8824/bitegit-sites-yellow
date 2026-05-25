@@ -4913,7 +4913,9 @@ app.get('/api/p2p/orders/:orderId/messages', requiresP2PUser, async (req, res) =
 });
 
 app.post('/api/p2p/orders/:orderId/messages', requiresP2PUser, async (req, res) => {
-  const text = String(req.body.text || '').trim();
+  // Sanitize: strip all HTML tags and event handlers from chat text
+  const rawText = String(req.body.text || '').trim();
+  const text    = rawText.replace(/<[^>]+>/g, '').replace(/on\w+=\S+/gi, '').replace(/javascript\s*:/gi, '').trim().slice(0, 1000);
   const imageBase64 = req.body.imageBase64 || null;
 
   if (!text && !imageBase64) {
@@ -5254,27 +5256,51 @@ app.get('/api/admin/wallet/deposits', requiresAdminSession, async (req, res) => 
   }
 });
 
+// ── Rate limiter: max 5 support tickets per IP per 10 minutes ────────────────
+const supportRateLimit = (() => {
+  try {
+    const rateLimit = require('express-rate-limit');
+    return rateLimit({
+      windowMs: 10 * 60 * 1000,  // 10 minutes
+      max: 5,
+      message: { message: 'Too many support requests. Please wait 10 minutes before trying again.' },
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req) => req.ip || req.connection?.remoteAddress || 'unknown',
+    });
+  } catch (e) { return (req, res, next) => next(); }
+})();
+
 // ── Public Support Chat — user submits message ────────────────────────────────
-app.post('/api/support/chat', async (req, res) => {
+app.post('/api/support/chat', supportRateLimit, async (req, res) => {
   try {
     const { message, topic, email, name } = req.body || {};
     if (!message || !String(message).trim()) {
       return res.status(400).json({ message: 'Message is required.' });
     }
+    // Extra server-side sanitization (middleware also runs, but belt-and-suspenders)
+    const cleanMsg   = String(message).replace(/<[^>]+>/g, '').replace(/on\w+=\S+/gi, '').trim().slice(0, 2000);
+    const cleanName  = String(name  || 'User').replace(/<[^>]+>/g, '').trim().slice(0, 80);
+    const cleanEmail = String(email || '').replace(/[<>"']/g, '').trim().slice(0, 200);
+    const cleanTopic = String(topic || '').replace(/<[^>]+>/g, '').trim().slice(0, 80);
+
+    if (!cleanMsg) {
+      return res.status(400).json({ message: 'Message is required.' });
+    }
     const ticketData = {
       id: `tkt_${Date.now()}_${require('crypto').randomBytes(16).toString('hex')}`,
-      userId: email || 'guest',
-      subject: topic ? `[${topic}] ${String(message).slice(0, 60)}` : String(message).slice(0, 80),
+      userId: cleanEmail || 'guest',
+      subject: cleanTopic ? `[${cleanTopic}] ${cleanMsg.slice(0, 60)}` : cleanMsg.slice(0, 80),
       status: 'OPEN',
       priority: 'MEDIUM',
       assignedTo: '',
-      email: email || '',
-      name: name || 'User',
+      email: cleanEmail,
+      name: cleanName,
       messages: [{
         id: `tmsg_${Date.now()}`,
         sender: 'user',
-        senderName: name || 'User',
-        text: String(message).trim(),
+        senderName: cleanName,
+        text: cleanMsg,
         createdAt: new Date()
       }],
       createdAt: new Date(),
@@ -5286,13 +5312,13 @@ app.post('/api/support/chat', async (req, res) => {
       const saved = await adminStore.createSupportTicket(ticketData);
       if (saved && saved.id) savedId = saved.id;
     }
-    // Notify admin via SSE
+    // Notify admin via SSE (use already-sanitized vars)
     broadcastAdminSupportEvent({
       ticketId: savedId,
       subject: ticketData.subject,
-      agentName: name || 'User',
-      email: email || 'guest',
-      message: String(message).trim().slice(0, 100)
+      agentName: cleanName,
+      email: cleanEmail || 'guest',
+      message: cleanMsg.slice(0, 100)
     });
     return res.json({ success: true, ticketId: savedId, message: 'Support request submitted.' });
   } catch (err) {
@@ -5345,13 +5371,17 @@ app.get('/api/support/ticket/:ticketId/messages', async (req, res) => {
 });
 
 // ── Public: user sends a reply on an existing ticket ─────────────────────────
-app.post('/api/support/ticket/:ticketId/user-reply', async (req, res) => {
+app.post('/api/support/ticket/:ticketId/user-reply', supportRateLimit, async (req, res) => {
   try {
     const { ticketId } = req.params;
     const { message, name } = req.body || {};
     if (!ticketId || !message || !String(message).trim()) {
       return res.status(400).json({ message: 'ticketId and message required' });
     }
+    // Sanitize reply content
+    const message_clean = String(message).replace(/<[^>]+>/g, '').replace(/on\w+=\S+/gi, '').trim().slice(0, 2000);
+    const name_clean    = String(name || 'User').replace(/<[^>]+>/g, '').trim().slice(0, 80);
+    if (!message_clean) return res.status(400).json({ message: 'Message is required.' });
     if (!adminStore || typeof adminStore.getSupportTicket !== 'function') {
       return res.status(503).json({ message: 'Support service unavailable' });
     }
@@ -5372,8 +5402,8 @@ app.post('/api/support/ticket/:ticketId/user-reply', async (req, res) => {
     const newMsg = {
       id: `tmsg_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
       sender: 'user',
-      senderName: name || ticket.name || 'User',
-      text: String(message).trim(),
+      senderName: name_clean || ticket.name || 'User',
+      text: message_clean,
       createdAt: new Date()
     };
     // Push message to ticket's messages array in DB
