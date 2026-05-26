@@ -187,6 +187,11 @@ let currentSide = 'buy';
 let currentAsset = 'USDT';
 let offersMap = new Map();
 let currentUser = null;
+// Expose currentUser on window so inline scripts (support chat) can read login state
+function _setCurrentUser(val) {
+  currentUser = val;
+  window._p2pUser = val; // accessible from p2p.html inline scripts
+}
 let activeDealOffer = null;
 let dealSyncLock = false;
 
@@ -2027,12 +2032,12 @@ async function submitProfileEdit() {
     }
 
     const nextProfile = data.profile || {};
-    currentUser = normalizeCurrentUserPayload({
+    _setCurrentUser(normalizeCurrentUserPayload({
       ...currentUser,
       username: nextProfile.username || nickname,
       avatar: nextProfile.avatar || profileEditAvatarDraft || '',
       createdAt: nextProfile.createdAt || currentUser?.createdAt || null
-    });
+    }));
 
     syncP2PHintCache();
 
@@ -2790,7 +2795,7 @@ async function loadCurrentUser() {
     if (hint) {
       const hintUser = normalizeCurrentUserPayload(JSON.parse(hint));
       if (hintUser) {
-        currentUser = hintUser;
+        _setCurrentUser(hintUser);
         updateUserUi(); // show logged-in UI immediately, no waiting
         // Show cached orders instantly — no network fetch yet to avoid aborting the confirmed fetch below
         var _hintCache = _loadOrdCache();
@@ -2818,7 +2823,7 @@ async function loadCurrentUser() {
       if (_prevId !== normalizedUser.id) {
         _clearOrdersCache({ preserveSnapshots: true }); // keep per-order snapshots for instant reloads
       }
-      currentUser = Object.assign({}, currentUser || {}, normalizedUser);
+      _setCurrentUser(Object.assign({}, currentUser || {}, normalizedUser));
       updateCurrentUserKyc(currentUser.kyc || {});
       syncP2PHintCache();
       // Load merchant badge on login so ad cards show it immediately
@@ -2834,7 +2839,7 @@ async function loadCurrentUser() {
       _startFallbackPoll(); // 15s fallback poll in case SSE is down
       _p2pPing(); // ping immediately so seller shows online to buyers right away
     } else {
-      currentUser = null;
+      _setCurrentUser(null);
       try { localStorage.removeItem('_p2p_hint'); } catch(_) {}
       try { localStorage.removeItem('_p2p_sec_dep'); _mySecDep = null; } catch(_) {}
       _clearOrdersCache({ preserveSnapshots: true });
@@ -2855,7 +2860,7 @@ async function loadCurrentUser() {
         const d = await r.json();
         var retryUser = normalizeCurrentUserPayload(d.user);
         if (d.loggedIn && retryUser) {
-          currentUser = retryUser;
+          _setCurrentUser(retryUser);
           updateCurrentUserKyc(currentUser.kyc || {});
           updateUserUi();
           // Re-render offers first so buy cards recover quickly after a cold-start retry.
@@ -2957,7 +2962,7 @@ async function loginUser() {
     // Always wipe all order state on login — guarantees zero cross-user contamination
     _clearOrdersCache({ preserveSnapshots: true });
 
-    currentUser = normalizeCurrentUserPayload(data.user);
+    _setCurrentUser(normalizeCurrentUserPayload(data.user));
     if (!currentUser) {
       throw new Error('Login session payload is incomplete.');
     }
@@ -3041,7 +3046,7 @@ async function logoutUser() {
       headers: buildP2PAuthHeaders()
     });
   } finally {
-    currentUser = null;
+    _setCurrentUser(null);
     try { localStorage.removeItem('_p2p_hint'); } catch(_) {}
     try { localStorage.removeItem('_p2p_sec_dep'); _mySecDep = null; } catch(_) {}
     try { localStorage.removeItem('bitegit_token'); } catch(_) {}
