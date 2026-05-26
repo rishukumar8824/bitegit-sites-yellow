@@ -9,8 +9,9 @@ function stripHtml(str) {
     .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
     // Remove on* event handlers (onerror=, onclick=, etc.)
     .replace(/\bon\w+\s*=\s*(['"]?)[^'">\s]*/gi, '')
-    // Remove javascript: and data: URIs
-    .replace(/(?:javascript|data|vbscript)\s*:/gi, '')
+    // Remove dangerous URIs (javascript:, vbscript:) — preserve data:image/ for file uploads
+    .replace(/(?:javascript|vbscript)\s*:/gi, '')
+    .replace(/data\s*:(?!image\/[a-zA-Z])/gi, '')
     // Remove all remaining HTML tags
     .replace(/<[^>]+>/g, '')
     // Trim whitespace
@@ -145,3 +146,4 @@ module.exports = {
   validationRules,
   MONGO_OBJECT_ID_REGEX
 };
+
