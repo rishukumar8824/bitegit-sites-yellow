@@ -2751,11 +2751,24 @@
       } catch(e) {}
     }
 
+    // Throttle helper: call fn at most once per 'wait' ms
+    var _spTypingThrottle = null;
+    function spSendTypingSignal() {
+      if (!_spTicketId) return;
+      if (_spTypingThrottle) return; // already sent recently
+      fetch('/api/support/ticket/' + _spTicketId + '/typing', { method: 'POST' }).catch(function(){});
+      _spTypingThrottle = setTimeout(function(){ _spTypingThrottle = null; }, 1500);
+    }
+
     document.addEventListener('DOMContentLoaded', function(){
       var inp = document.getElementById('spChatInput');
       if (inp) {
         inp.addEventListener('keydown', function(e){
           if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); spSendMsg(); }
+          else spSendTypingSignal();
+        });
+        inp.addEventListener('input', function(){
+          spSendTypingSignal();
         });
       }
     });
