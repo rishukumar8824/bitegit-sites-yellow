@@ -705,6 +705,17 @@ function createAdminControllers({
 
   async function getSupportTicket(req, res) {
     const ticket = await adminStore.getSupportTicket(req.params.ticketId);
+    // Inject live typing state from in-memory map (set via app.locals in server.js)
+    try {
+      const typingState = req.app && req.app.locals && req.app.locals.supportTypingState;
+      if (typingState) {
+        const tid = String(req.params.ticketId || '').trim();
+        const lastTyped = typingState.get(tid) || 0;
+        ticket.userTyping = lastTyped > 0 && (Date.now() - lastTyped) < 4000;
+      } else {
+        ticket.userTyping = false;
+      }
+    } catch (_) { ticket.userTyping = false; }
     return res.json(ticket);
   }
 
