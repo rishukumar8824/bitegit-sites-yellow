@@ -1646,20 +1646,6 @@ async function openTicket(ticketId) {
     }
   }, 3000);
 
-  // Poll every 2 seconds for typing indicator
-  if (state.support.typingPollInterval) clearInterval(state.support.typingPollInterval);
-  state.support.typingPollInterval = setInterval(async () => {
-    if (state.support.activeTicketId !== ticketId || state.currentView !== 'support') return;
-    try {
-      const res = await fetch(`/api/admin/support/ticket/${encodeURIComponent(ticketId)}/typing-status`, {
-        credentials: 'include'
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const el = document.getElementById('chatUserTyping');
-      if (el) el.style.display = data.userTyping ? 'block' : 'none';
-    } catch (_) {}
-  }, 2000);
 }
 
 async function renderTicketChat(ticketId, silent = false) {
@@ -1722,14 +1708,15 @@ async function renderTicketChat(ticketId, silent = false) {
 
       if (wasAtBottom || !silent) chatMessages.scrollTop = chatMessages.scrollHeight;
 
-      // Inject typing indicator after messages area if not present
-      if (!document.getElementById('chatUserTyping')) {
-        const typingEl = document.createElement('div');
+      // Show/hide typing indicator using ticket.userTyping from API response
+      let typingEl = document.getElementById('chatUserTyping');
+      if (!typingEl) {
+        typingEl = document.createElement('div');
         typingEl.id = 'chatUserTyping';
-        typingEl.style.cssText = 'display:none;padding:6px 14px 4px;font-size:12px;color:var(--text-2);font-style:italic;';
+        typingEl.style.cssText = 'padding:4px 16px 6px;font-size:12px;color:#00b8d4;font-style:italic;flex-shrink:0;';
         typingEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
           <span style="display:inline-flex;gap:3px;align-items:center;">
-            <span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;animation-delay:0s;"></span>
+            <span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;"></span>
             <span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;animation-delay:0.2s;"></span>
             <span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;animation-delay:0.4s;"></span>
           </span>
@@ -1737,6 +1724,7 @@ async function renderTicketChat(ticketId, silent = false) {
         </span>`;
         chatMessages.parentNode.insertBefore(typingEl, chatMessages.nextSibling);
       }
+      typingEl.style.display = ticket.userTyping ? 'block' : 'none';
     }
 
     // ─── Button states ───
