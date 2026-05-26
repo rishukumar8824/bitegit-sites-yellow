@@ -4387,3 +4387,48 @@ body.mob-screen-open .p2p-secondary-nav {
 }
 .sp-connect-btn:active { opacity: 0.75; }
 .sp-connect-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Support chat screen: fully fixed, no shake on keyboard ── */
+#mobSupportChatScreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: 100% !important;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
+}
+#mobSupportChatScreen .sp-chat-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+#mobSupportChatScreen .sp-chat-input-area {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+}
+/* ── Live agent direct button in support screen ── */
+.sp-direct-agent-btn {
+  width: 100%;
+  background: #00b8d4;
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
