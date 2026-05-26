@@ -5513,6 +5513,26 @@ app.post('/api/support/ticket/:ticketId/user-reply', supportRateLimit, async (re
   }
 });
 
+// ── Public: user heartbeat — marks user as active/online on a ticket ─────────
+app.post('/api/support/ticket/:ticketId/heartbeat', async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    if (!ticketId) return res.status(400).json({ ok: false });
+    const { getCollections } = require('./lib/db');
+    const cols = getCollections ? getCollections() : null;
+    const adminSupportTickets = cols ? cols.adminSupportTickets : null;
+    if (adminSupportTickets) {
+      await adminSupportTickets.updateOne(
+        { id: String(ticketId).trim() },
+        { $set: { userLastSeen: new Date() } }
+      );
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(200).json({ ok: false }); // silent — never error to client
+  }
+});
+
 // ── Legacy admin URLs → 404 (security: hide admin panel location) ──
 app.get('/admin-login', (req, res) => res.status(404).send('Not Found'));
 app.get('/admin/login', (req, res) => res.status(404).send('Not Found'));
