@@ -35,6 +35,7 @@ function toWithdrawalResponse(doc) {
     return null;
   }
 
+  const metadata = doc.metadata && typeof doc.metadata === 'object' ? doc.metadata : {};
   return {
     requestId: String(doc.requestId || '').trim(),
     userId: String(doc.userId || '').trim(),
@@ -42,9 +43,10 @@ function toWithdrawalResponse(doc) {
     currency: String(doc.currency || '').trim().toUpperCase(),
     address: String(doc.address || '').trim(),
     status: normalizeWithdrawalStatus(doc.status || 'pending'),
+    reason: String(metadata.reason || doc.reason || '').trim(),
     createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : null,
     processedAt: doc.processedAt ? new Date(doc.processedAt).toISOString() : null,
-    metadata: doc.metadata && typeof doc.metadata === 'object' ? doc.metadata : {}
+    metadata
   };
 }
 
