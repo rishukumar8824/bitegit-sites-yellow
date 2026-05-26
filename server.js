@@ -292,6 +292,7 @@ const p2pUserStreams = new Map();
 // Admin support SSE clients
 const adminSupportSseClients = new Set();
 const _supportTypingState = new Map(); // ticketId -> lastTypedAt timestamp (in-memory, resets on restart)
+app.locals.supportTypingState = _supportTypingState; // accessible from admin route handlers
 function broadcastAdminSupportEvent(payload) {
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   adminSupportSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
