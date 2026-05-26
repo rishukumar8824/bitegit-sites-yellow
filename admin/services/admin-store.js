@@ -2257,7 +2257,15 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     const rows = await adminSupportTickets.find(query).sort({ updatedAt: -1 }).skip(skip).limit(limit).toArray();
     const total = await adminSupportTickets.countDocuments(query);
 
-    return { page, limit, total, tickets: rows };
+    const now = Date.now();
+    const ONLINE_MS = 2 * 60 * 1000; // 2 minutes
+    return {
+      page, limit, total,
+      tickets: rows.map(t => ({
+        ...t,
+        userOnline: t.userLastSeen ? (now - new Date(t.userLastSeen).getTime()) < ONLINE_MS : false
+      }))
+    };
   }
 
   async function createSupportTicket(data) {
@@ -2364,6 +2372,10 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
     if (!ticket) {
       throw Object.assign(new Error('Ticket not found'), { status: 404 });
     }
+    const ONLINE_MS = 2 * 60 * 1000;
+    ticket.userOnline = ticket.userLastSeen
+      ? (Date.now() - new Date(ticket.userLastSeen).getTime()) < ONLINE_MS
+      : false;
     return ticket;
   }
 
