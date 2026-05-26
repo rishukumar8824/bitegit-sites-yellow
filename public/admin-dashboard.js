@@ -4090,19 +4090,21 @@ function _wdRenderRows(withdrawals) {
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Username:</span> <span style="color:#c9d1d9;">${userName}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Email:</span> <span style="color:#00e5ff;">${userEmail !== '-' ? userEmail : '<span style="color:#848e9c;">-</span>'}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Network:</span> ${escapeHtml(w.network || '-')}</div>
-          <div style="word-break:break-all;display:flex;align-items:flex-start;gap:6px;"><span style="color:#848e9c;min-width:90px;display:inline-block;flex-shrink:0;">Address:</span><span id="wdAddr_${idx}" style="flex:1;">${escapeHtml(address)}</span><button onclick="wdEditAddress('${escapeHtml(id)}','wdAddr_${idx}')" style="background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);color:#00e5ff;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;flex-shrink:0;">✏️ Edit</button></div>
+          <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;">Address:</span><span id="wdAddr_${idx}">${escapeHtml(address)}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Fee:</span> ${escapeHtml(fee)} USDT</div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Request ID:</span> <span style="font-size:10px;word-break:break-all;">${escapeHtml(id || '-')}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Submitted:</span> ${escapeHtml(createdAt)}</div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Processed:</span> ${escapeHtml(processedAt)}</div>
-          ${w.reason || (w.metadata && w.metadata.reason) ? `<div><span style="color:#848e9c;min-width:90px;display:inline-block;">Reason:</span><span style="color:#f6465d;font-weight:600;">${escapeHtml(w.reason || (w.metadata && w.metadata.reason) || '')}</span></div>` : ''}
+          ${w.reason || (w.metadata && w.metadata.reason) ? `<div style="background:rgba(246,70,93,0.1);border:1px solid rgba(246,70,93,0.3);border-radius:6px;padding:6px 10px;margin-top:4px;"><span style="color:#848e9c;font-size:11px;">Rejection Reason:</span><div style="color:#f6465d;font-weight:700;font-size:12px;margin-top:2px;">${escapeHtml(w.reason || (w.metadata && w.metadata.reason) || '')}</div></div>` : ''}
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
           <button onclick="wdAction('${escapeHtml(id)}','APPROVED',this)"
             style="background:#02c076;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;">✓ Approve</button>
           <button onclick="wdAction('${escapeHtml(id)}','REJECTED',this)"
             style="background:#f6465d;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;">✕ Reject</button>
         </div>
+        <button onclick="wdEditAddress('${escapeHtml(id)}','wdAddr_${idx}')"
+          style="width:100%;background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.4);color:#00e5ff;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:800;cursor:pointer;">✏️ Edit Address</button>
       </div>
     </div>`;
   }).join('');

@@ -1671,7 +1671,7 @@
     return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
   }
 
-  function buildRecRow(sign, amount, network, dateStr, statusColor, statusLabel) {
+  function buildRecRow(sign, amount, network, dateStr, statusColor, statusLabel, reason) {
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;padding:.75rem 1rem;border-bottom:1px solid rgba(255,255,255,.06);gap:.75rem';
     row.innerHTML = usdtSvgSm +
@@ -1682,6 +1682,7 @@
         '</div>' +
         '<div style="font-size:.75rem;color:#8a9bb5;margin-top:.2rem">'+(network||'USDT')+'</div>' +
         '<div style="font-size:.72rem;color:#8a9bb5;margin-top:.1rem">'+dateStr+'</div>' +
+        (reason ? '<div style="font-size:.72rem;color:#f6465d;margin-top:.2rem;font-weight:600;">Reason: '+reason+'</div>' : '') +
       '</div>';
     return row;
   }
@@ -1702,7 +1703,8 @@
           var statusColor = (status==='1'||status==='approved'||status==='completed') ? '#0ecb81' : (status==='3'||status==='rejected') ? '#f6465d' : '#f5a623';
           var statusLabel = (status==='1'||status==='approved'||status==='completed') ? 'Approved' : (status==='3'||status==='rejected') ? 'Rejected' : (status==='2'||status==='processing'||status==='sent') ? 'Processing' : 'Pending';
           var net = (w.method && w.method.name) ? w.method.name : 'TRC20';
-          el.appendChild(buildRecRow('-', w.amount, net, fmtDate(w.created_at), statusColor, statusLabel));
+          var reason = (status==='3'||status==='rejected') ? (w.reason || (w.metadata && w.metadata.reason) || '') : '';
+          el.appendChild(buildRecRow('-', w.amount, net, fmtDate(w.created_at), statusColor, statusLabel, reason));
         });
       }).catch(function(){});
 
