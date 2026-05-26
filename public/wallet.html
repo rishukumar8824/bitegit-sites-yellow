@@ -2068,6 +2068,7 @@
                 '</div>' +
                 '<div style="font-size:.75rem;color:#8a9bb5;margin-top:.2rem">'+network+'</div>' +
                 '<div style="font-size:.72rem;color:#8a9bb5;margin-top:.1rem">'+dateStr+'</div>' +
+                ((status==='rejected'||status==='3') && (w.reason||(w.metadata&&w.metadata.reason)) ? '<div style="font-size:.72rem;color:#f6465d;font-weight:700;margin-top:.25rem;">⚠ '+(w.reason||(w.metadata&&w.metadata.reason))+'</div>' : '') +
               '</div>' +
             '</div>' +
             '<div id="'+detId+'" style="display:none;padding:.5rem 1rem .9rem;background:rgba(255,255,255,.03);border-top:1px solid rgba(255,255,255,.05)">' +
