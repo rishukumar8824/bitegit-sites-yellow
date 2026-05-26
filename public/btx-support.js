@@ -123,11 +123,26 @@
     if (!t) {
       t = { id:spId(), userName:'Guest', userEmail:'guest', messages:[], status:'open', createdAt:Date.now(), unreadAdmin:0, agentConnected:false, agentRequested:false };
       try {
-        // Try to get user info from page if available
-        const u = window.btxUser || (typeof getStoredBitcovexUser==='function' ? getStoredBitcovexUser() : null);
-        if (u) { t.userName = u.name || u.email || 'User'; t.userEmail = u.email || 'user'; }
+        // Try currentUser from p2p.js (set on login)
+        const cu = window.currentUser;
+        if (cu && cu.id) {
+          t.userName = cu.username || cu.email || 'User';
+          t.userEmail = cu.email || 'user';
+        } else {
+          const u = window.btxUser || (typeof getStoredBitcovexUser==='function' ? getStoredBitcovexUser() : null);
+          if (u) { t.userName = u.name || u.email || 'User'; t.userEmail = u.email || 'user'; }
+        }
       } catch(e){}
       tickets.push(t); spSave(tickets); spSetActive(t.id);
+    } else {
+      // Update existing ticket with latest login info
+      try {
+        const cu = window.currentUser;
+        if (cu && cu.id) {
+          t.userName = cu.username || cu.email || t.userName;
+          t.userEmail = cu.email || t.userEmail;
+        }
+      } catch(e){}
     }
     return t;
   }
@@ -422,6 +437,17 @@
 
   /* ─── REQUEST LIVE AGENT ──────────────────────────────── */
   function btxRequestAgent() {
+    // Require login to connect with live agent
+    if (!window.currentUser || !window.currentUser.id) {
+      const wrap = document.getElementById('btxChatMsgs');
+      if (wrap) {
+        const d = document.createElement('div');
+        d.className = 'btxMsgAdmin';
+        d.innerHTML = `<div class="btxMsgText">🔒 <strong>Login required</strong><br><span style="font-size:12px;opacity:0.8;">Please <a href="/p2p#auth" style="color:${COLOR};">log in</a> to connect with a live agent.</span></div><div class="btxMsgMeta">🤖 Bot · just now</div>`;
+        wrap.appendChild(d); btxScroll(wrap);
+      }
+      return;
+    }
     const ticket = spEnsure();
     ticket.agentRequested = true;
     ticket.unreadAdmin = (ticket.unreadAdmin||0)+1;
