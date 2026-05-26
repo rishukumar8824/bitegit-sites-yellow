@@ -923,7 +923,8 @@ async function loadWallet() {
           <div><span class="text-slate-500">User:</span> ${escapeHtml(userLabel)}</div>
           <div><span class="text-slate-500">User ID:</span> ${row.userId ? `<button style="color:#60a5fa;text-decoration:underline;background:none;border:none;cursor:pointer;padding:0;font-size:inherit;" data-open-user-balance="${escapeHtml(row.userId)}">${escapeHtml(row.userId)}</button>` : '-'}</div>
           <div><span class="text-slate-500">Network:</span> ${escapeHtml(network)}</div>
-          <div style="word-break:break-all;"><span class="text-slate-500">Address:</span> ${escapeHtml(address)}</div>
+          <div style="word-break:break-all;display:flex;align-items:flex-start;gap:6px;"><span class="text-slate-500" style="flex-shrink:0;">Address:</span><span style="flex:1;">${escapeHtml(address)}</span>${canReview ? `<button onclick="wdEditAddress('${escapeHtml(withdrawalId)}', null)" style="background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);color:#00e5ff;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;flex-shrink:0;">✏️ Edit</button>` : ''}</div>
+          ${row.reason || (row.metadata && row.metadata.reason) ? `<div><span class="text-slate-500">Reason:</span> <span style="color:#f6465d;font-weight:600;">${escapeHtml(row.reason || (row.metadata && row.metadata.reason) || '')}</span></div>` : ''}
           <div><span class="text-slate-500">Created:</span> ${escapeHtml(formatDate(row.createdAt))}</div>
         </div>
         <div class="mt-3 grid grid-cols-2 gap-2">
@@ -4089,11 +4090,12 @@ function _wdRenderRows(withdrawals) {
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Username:</span> <span style="color:#c9d1d9;">${userName}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Email:</span> <span style="color:#00e5ff;">${userEmail !== '-' ? userEmail : '<span style="color:#848e9c;">-</span>'}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Network:</span> ${escapeHtml(w.network || '-')}</div>
-          <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;">Address:</span> ${escapeHtml(address)}</div>
+          <div style="word-break:break-all;display:flex;align-items:flex-start;gap:6px;"><span style="color:#848e9c;min-width:90px;display:inline-block;flex-shrink:0;">Address:</span><span id="wdAddr_${idx}" style="flex:1;">${escapeHtml(address)}</span><button onclick="wdEditAddress('${escapeHtml(id)}','wdAddr_${idx}')" style="background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);color:#00e5ff;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;flex-shrink:0;">✏️ Edit</button></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Fee:</span> ${escapeHtml(fee)} USDT</div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Request ID:</span> <span style="font-size:10px;word-break:break-all;">${escapeHtml(id || '-')}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Submitted:</span> ${escapeHtml(createdAt)}</div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Processed:</span> ${escapeHtml(processedAt)}</div>
+          ${w.reason || (w.metadata && w.metadata.reason) ? `<div><span style="color:#848e9c;min-width:90px;display:inline-block;">Reason:</span><span style="color:#f6465d;font-weight:600;">${escapeHtml(w.reason || (w.metadata && w.metadata.reason) || '')}</span></div>` : ''}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <button onclick="wdAction('${escapeHtml(id)}','APPROVED',this)"
@@ -4231,5 +4233,22 @@ async function wdAction(withdrawalId, decision, btn) {
     showMessage(e.message || 'Action failed', 'error');
     btn.disabled = false;
     btn.textContent = decision === 'APPROVED' ? '✓ Approve' : '✕ Reject';
+  }
+}
+
+async function wdEditAddress(withdrawalId, spanId) {
+  const span = document.getElementById(spanId);
+  const currentAddr = span ? span.textContent.trim() : '';
+  const newAddr = window.prompt('New withdrawal address:', currentAddr);
+  if (!newAddr || newAddr === currentAddr) return;
+  try {
+    await apiRequest(`/wallet/withdrawals/${encodeURIComponent(withdrawalId)}/address`, {
+      method: 'PATCH',
+      body: JSON.stringify({ address: newAddr })
+    });
+    if (span) span.textContent = newAddr;
+    showMessage('Address updated successfully.', 'success');
+  } catch(e) {
+    showMessage(e.message || 'Failed to update address', 'error');
   }
 }

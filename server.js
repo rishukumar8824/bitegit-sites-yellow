@@ -5187,6 +5187,25 @@ app.get('/api/admin/wallet/withdrawals', requiresAdminSession, async (req, res) 
   }
 });
 
+// ── Admin: Edit withdrawal address ────────────────────────────────────────────
+app.patch('/api/admin/wallet/withdrawals/:requestId/address', requiresAdminSession, async (req, res) => {
+  const requestId = String(req.params.requestId || '').trim();
+  const newAddress = String(req.body?.address || '').trim();
+  if (!requestId) return res.status(400).json({ message: 'requestId is required.' });
+  if (!newAddress) return res.status(400).json({ message: 'address is required.' });
+  try {
+    const cols = getCollections();
+    const result = await cols.withdrawalRequests.updateOne(
+      { requestId },
+      { $set: { address: newAddress, updatedAt: new Date() } }
+    );
+    if (result.matchedCount === 0) return res.status(404).json({ message: 'Withdrawal not found.' });
+    return res.json({ message: 'Address updated.', address: newAddress });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to update address.' });
+  }
+});
+
 // ── Admin: Approve or reject a withdrawal request ─────────────────────────────
 app.post('/api/admin/wallet/withdrawals/:requestId/review', requiresAdminSession, async (req, res) => {
   const requestId = String(req.params.requestId || '').trim();
