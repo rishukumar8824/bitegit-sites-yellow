@@ -291,6 +291,7 @@ const p2pOrderStreams = new Map();
 const p2pUserStreams = new Map();
 // Admin support SSE clients
 const adminSupportSseClients = new Set();
+const _supportTypingState = new Map(); // ticketId -> lastTypedAt timestamp (in-memory, resets on restart)
 function broadcastAdminSupportEvent(payload) {
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   adminSupportSseClients.forEach(res => { try { res.write(msg); } catch(e) {} });
@@ -5432,6 +5433,9 @@ app.get('/api/support/ticket/:ticketId/messages', async (req, res) => {
     return res.json({
       ticketId: ticket.id,
       status: ticket.status,
+      userTyping: _supportTypingState.has(String(ticketId).trim())
+        ? (Date.now() - _supportTypingState.get(String(ticketId).trim())) < 4000
+        : false,
       messages: (ticket.messages || []).map(m => {
         const isUser = m.sender === 'user';
         return {
@@ -5439,6 +5443,7 @@ app.get('/api/support/ticket/:ticketId/messages', async (req, res) => {
           sender: isUser ? 'user' : 'admin',
           senderName: m.senderName || (isUser ? 'You' : 'Support Agent'),
           text: m.text,
+          image: m.image || '',
           createdAt: m.createdAt
         };
       })
@@ -5453,14 +5458,14 @@ app.get('/api/support/ticket/:ticketId/messages', async (req, res) => {
 app.post('/api/support/ticket/:ticketId/user-reply', supportRateLimit, async (req, res) => {
   try {
     const { ticketId } = req.params;
-    const { message, name } = req.body || {};
-    if (!ticketId || !message || !String(message).trim()) {
-      return res.status(400).json({ message: 'ticketId and message required' });
+    const { message, name, image } = req.body || {};
+    const rawImage = typeof image === 'string' && image.startsWith('data:image/') ? image : '';
+    if (!ticketId || (!message && !rawImage)) {
+      return res.status(400).json({ message: 'ticketId and message or image required' });
     }
     // Sanitize reply content
-    const message_clean = String(message).replace(/<[^>]+>/g, '').replace(/on\w+=\S+/gi, '').trim().slice(0, 2000);
+    const message_clean = message ? String(message).replace(/<[^>]+>/g, '').replace(/on\w+=\S+/gi, '').trim().slice(0, 2000) : '';
     const name_clean    = String(name || 'User').replace(/<[^>]+>/g, '').trim().slice(0, 80);
-    if (!message_clean) return res.status(400).json({ message: 'Message is required.' });
     if (!adminStore || typeof adminStore.getSupportTicket !== 'function') {
       return res.status(503).json({ message: 'Support service unavailable' });
     }
@@ -5482,7 +5487,8 @@ app.post('/api/support/ticket/:ticketId/user-reply', supportRateLimit, async (re
       id: `tmsg_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
       sender: 'user',
       senderName: name_clean || ticket.name || 'User',
-      text: message_clean,
+      text: message_clean || (rawImage ? '📷 Photo' : ''),
+      image: rawImage,
       createdAt: new Date()
     };
     // Push message to ticket's messages array in DB
@@ -5531,6 +5537,23 @@ app.post('/api/support/ticket/:ticketId/heartbeat', async (req, res) => {
   } catch (e) {
     return res.status(200).json({ ok: false }); // silent — never error to client
   }
+});
+
+// ── Public: user typing indicator ────────────────────────────────────────────
+app.post('/api/support/ticket/:ticketId/typing', (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    if (ticketId) _supportTypingState.set(String(ticketId).trim(), Date.now());
+  } catch (_) {}
+  return res.json({ ok: true });
+});
+
+// ── Admin: get user typing status for a ticket ────────────────────────────────
+app.get('/api/admin/support/ticket/:ticketId/typing-status', requiresAdminSession, (req, res) => {
+  const tid = String(req.params.ticketId || '').trim();
+  const lastTyped = _supportTypingState.get(tid) || 0;
+  const userTyping = lastTyped > 0 && (Date.now() - lastTyped) < 4000;
+  return res.json({ userTyping });
 });
 
 // ── Legacy admin URLs → 404 (security: hide admin panel location) ──
