@@ -1254,7 +1254,8 @@
             var net = (wd.metadata && wd.metadata.network) || wd.network || 'TRC20';
             var addr = (wd.metadata && wd.metadata.address) || wd.address || '-';
             var statusMap = { pending: 'pending', approved: '1', rejected: '3', processing: '2', completed: '1' };
-            return { amount: wd.amount || 0, status: statusMap[String(wd.status || 'pending').toLowerCase()] || 'pending', created_at: wd.createdAt || wd.submittedAt || new Date().toISOString(), charge: (wd.metadata && wd.metadata.fee) || wd.fee || 0, method: { name: net }, withdraw_information: JSON.stringify([{ value: addr }]) };
+            var wdReason = wd.reason || (wd.metadata && wd.metadata.reason) || '';
+            return { amount: wd.amount || 0, status: statusMap[String(wd.status || 'pending').toLowerCase()] || 'pending', created_at: wd.createdAt || wd.submittedAt || new Date().toISOString(), charge: (wd.metadata && wd.metadata.fee) || wd.fee || 0, method: { name: net }, withdraw_information: JSON.stringify([{ value: addr }]), reason: wdReason };
           });
           return _fakeRes({ status: 'success', data: { withdrawals: { data: wds } } });
         })
