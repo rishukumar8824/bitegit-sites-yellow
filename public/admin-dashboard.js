@@ -1513,8 +1513,14 @@ async function loadSupport() {
   try {
     payload = await apiRequest(`/support/tickets?${query.toString()}`);
   } catch (e) {
+    const isServerBoot = e.message.includes('404') || e.message.includes('not found');
     document.getElementById('supportTicketsList').innerHTML =
-      `<div style="padding:24px;color:var(--red);font-size:13px;text-align:center;">⚠️ Failed to load: ${e.message}</div>`;
+      `<div style="padding:32px 16px;text-align:center;color:var(--text-2);">
+        <div style="font-size:28px;margin-bottom:10px;">${isServerBoot ? '⏳' : '⚠️'}</div>
+        <p style="font-size:13px;font-weight:700;color:var(--text-1);margin:0 0 6px;">${isServerBoot ? 'Server is starting up…' : 'Failed to load tickets'}</p>
+        <p style="font-size:12px;margin:0 0 14px;opacity:.65;">${isServerBoot ? 'Please wait a moment and click Refresh.' : e.message}</p>
+        <button onclick="loadSupport()" style="background:var(--accent);color:#000;border:none;border-radius:8px;padding:8px 18px;font-size:12px;font-weight:700;cursor:pointer;">↻ Retry</button>
+      </div>`;
     return;
   }
 
