@@ -436,7 +436,8 @@ app.use((req, res, next) => {
   const isImageRoute = (
     req.path.includes('/kyc') ||
     req.path.includes('/orders') ||   // P2P chat images
-    req.path.includes('/profile')     // avatar
+    req.path.includes('/profile') ||  // avatar
+    req.path.includes('/support')     // support chat images
   );
   return express.json({ limit: isImageRoute ? '5mb' : '100kb' })(req, res, next);
 });
