@@ -822,7 +822,10 @@
             <div class="sp-connect-sub">Avg. response time: ~2 min</div>
           </div>
         </div>
-        <button class="sp-connect-btn" onclick="spConnectAgent()">Connect</button>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="sp-connect-btn" style="background:rgba(0,184,212,0.12);color:#00b8d4;border:1.5px solid #00b8d4;" onclick="window.showMobScreen && window.showMobScreen('mobSupportChatScreen')">Chat</button>
+          <button class="sp-connect-btn" onclick="spConnectAgent()">Live Agent</button>
+        </div>
       </div>
 
       <!-- Input -->
@@ -2122,38 +2125,14 @@
     var _spAgentName = '';
     var _spBotActive = true;
 
-    // ── Lock screen height when keyboard opens (anti-shake) ──────
+    // ── Scroll to bottom when keyboard opens (no resize = no shake) ──
     function spAdjustForKeyboard() {
-      var el = document.getElementById('mobSupportChatScreen');
-      if (!el || el.style.display === 'none') return;
-      if (window.visualViewport) {
-        var vv = window.visualViewport;
-        el.style.top = vv.offsetTop + 'px';
-        el.style.height = vv.height + 'px';
-        el.style.bottom = 'auto';
-      } else {
-        el.style.top = '0';
-        el.style.height = window.innerHeight + 'px';
-        el.style.bottom = 'auto';
-      }
-      var body = el.querySelector('.sp-chat-body');
-      if (body) setTimeout(function(){ body.scrollTop = body.scrollHeight; }, 50);
+      var body = document.querySelector('#mobSupportChatScreen .sp-chat-body');
+      if (body) requestAnimationFrame(function(){ body.scrollTop = body.scrollHeight; });
     }
-    function spResetHeight() {
-      var el = document.getElementById('mobSupportChatScreen');
-      if (!el) return;
-      el.style.top = '0';
-      el.style.height = '';
-      el.style.bottom = '0';
-    }
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', spAdjustForKeyboard);
-    }
+    function spResetHeight() { spAdjustForKeyboard(); }
     window.addEventListener('focusin', function(e) {
-      if (e.target && e.target.id === 'spChatInput') setTimeout(spAdjustForKeyboard, 80);
-    });
-    window.addEventListener('focusout', function(e) {
-      if (e.target && e.target.id === 'spChatInput') setTimeout(spResetHeight, 80);
+      if (e.target && e.target.id === 'spChatInput') setTimeout(spAdjustForKeyboard, 120);
     });
     function spLockHeight() { spAdjustForKeyboard(); }
 
