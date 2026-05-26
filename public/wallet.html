@@ -1672,18 +1672,41 @@
     return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
   }
 
-  function buildRecRow(sign, amount, network, dateStr, statusColor, statusLabel, reason) {
+  var _recWdIdx = 0;
+  function buildRecRow(sign, amount, network, dateStr, statusColor, statusLabel, reason, fee, address) {
+    var idx = _recWdIdx++;
+    var detId = 'recDet_' + idx;
+    var feeNum = Number(fee || 0);
+    var youReceive = (Number(amount || 0) - feeNum).toFixed(2);
+    var addrStr = address || '-';
     var row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;padding:.75rem 1rem;border-bottom:1px solid rgba(255,255,255,.06);gap:.75rem';
-    row.innerHTML = usdtSvgSm +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between">' +
-          '<div style="font-size:.92rem;font-weight:700;color:#fff">'+sign+(amount||0)+' USDT</div>' +
-          '<div style="font-size:.78rem;font-weight:700;color:'+statusColor+';display:flex;align-items:center;gap:.2rem"><span>•</span>'+statusLabel+'</div>' +
+    row.style.cssText = 'border-bottom:1px solid rgba(255,255,255,.06);';
+    row.innerHTML =
+      '<div onclick="(function(el,arrEl){var d=document.getElementById(\''+detId+'\');var open=d.style.display!==\'none\';d.style.display=open?\'none\':\'block\';arrEl.textContent=open?\'›\':\'‹\';})(this,document.getElementById(\''+detId+'_arr\'))" style="display:flex;align-items:center;padding:.75rem 1rem;gap:.75rem;cursor:pointer">' +
+        usdtSvgSm +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between">' +
+            '<div style="font-size:.92rem;font-weight:700;color:#fff">'+sign+(amount||0)+' USDT</div>' +
+            '<div style="display:flex;align-items:center;gap:.5rem">' +
+              '<div style="font-size:.78rem;font-weight:700;color:'+statusColor+';display:flex;align-items:center;gap:.2rem"><span>•</span>'+statusLabel+'</div>' +
+              '<span id="'+detId+'_arr" style="color:#848e9c;font-size:1.1rem">›</span>' +
+            '</div>' +
+          '</div>' +
+          '<div style="font-size:.75rem;color:#8a9bb5;margin-top:.2rem">'+(network||'USDT')+'</div>' +
+          '<div style="font-size:.72rem;color:#8a9bb5;margin-top:.1rem">'+dateStr+'</div>' +
+          (reason ? '<div style="font-size:.72rem;color:#f6465d;font-weight:700;margin-top:.2rem;">⚠ '+reason+'</div>' : '') +
         '</div>' +
-        '<div style="font-size:.75rem;color:#8a9bb5;margin-top:.2rem">'+(network||'USDT')+'</div>' +
-        '<div style="font-size:.72rem;color:#8a9bb5;margin-top:.1rem">'+dateStr+'</div>' +
-        (reason ? '<div style="font-size:.72rem;color:#f6465d;margin-top:.2rem;font-weight:600;">Reason: '+reason+'</div>' : '') +
+      '</div>' +
+      '<div id="'+detId+'" style="display:none;padding:.5rem 1rem .9rem;background:rgba(255,255,255,.03);border-top:1px solid rgba(255,255,255,.05)">' +
+        '<table style="width:100%;font-size:.78rem;border-collapse:collapse">' +
+          '<tr><td style="color:#8a9bb5;padding:.25rem 0;width:42%">Network</td><td style="color:#eaecef;font-weight:600">'+network+'</td></tr>' +
+          '<tr><td style="color:#8a9bb5;padding:.25rem 0">Fee</td><td style="color:#eaecef;font-weight:600">'+feeNum+' USDT</td></tr>' +
+          '<tr><td style="color:#8a9bb5;padding:.25rem 0">You receive</td><td style="color:#0ecb81;font-weight:700">'+youReceive+' USDT</td></tr>' +
+          '<tr><td style="color:#8a9bb5;padding:.25rem 0;vertical-align:top">Address</td><td style="color:#eaecef;font-size:.72rem;word-break:break-all">'+addrStr+'</td></tr>' +
+          '<tr><td style="color:#8a9bb5;padding:.25rem 0">Status</td><td style="color:'+statusColor+';font-weight:700">'+statusLabel+'</td></tr>' +
+          (reason ? '<tr><td style="color:#8a9bb5;padding:.25rem 0;vertical-align:top">Reason</td><td style="color:#f6465d;font-size:.78rem">'+reason+'</td></tr>' : '') +
+          '<tr><td style="color:#8a9bb5;padding:.25rem 0">Submitted</td><td style="color:#eaecef">'+dateStr+'</td></tr>' +
+        '</table>' +
       '</div>';
     return row;
   }
@@ -1697,6 +1720,7 @@
         var el = document.getElementById('recWdList');
         var empty = document.getElementById('recWdEmpty');
         el.innerHTML = '';
+        _recWdIdx = 0;
         if(!list.length) { empty.classList.remove('hidden'); return; }
         empty.classList.add('hidden');
         list.forEach(function(w) {
@@ -1705,7 +1729,10 @@
           var statusLabel = (status==='1'||status==='approved'||status==='completed') ? 'Approved' : (status==='3'||status==='rejected') ? 'Rejected' : (status==='2'||status==='processing'||status==='sent') ? 'Processing' : 'Pending';
           var net = (w.method && w.method.name) ? w.method.name : 'TRC20';
           var reason = (status==='3'||status==='rejected') ? (w.reason || (w.metadata && w.metadata.reason) || '') : '';
-          el.appendChild(buildRecRow('-', w.amount, net, fmtDate(w.created_at), statusColor, statusLabel, reason));
+          var fee = w.charge || 0;
+          var address = '-';
+          try { var wi = w.withdraw_information; if(wi){ var p=typeof wi==='string'?JSON.parse(wi):wi; address = (Array.isArray(p)&&p.length>0) ? (p[0].value||'-') : (p&&p.wallet_address||p.address||'-'); } } catch(e){}
+          el.appendChild(buildRecRow('-', w.amount, net, fmtDate(w.created_at), statusColor, statusLabel, reason, fee, address));
         });
       }).catch(function(){});
 
