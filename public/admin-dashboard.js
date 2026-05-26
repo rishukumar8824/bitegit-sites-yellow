@@ -1,5 +1,15 @@
 const API_BASE = '/api/admin';
 
+// Inject typing-dot keyframes for support chat typing indicator
+(function() {
+  if (!document.getElementById('__adminTypingStyle')) {
+    const s = document.createElement('style');
+    s.id = '__adminTypingStyle';
+    s.textContent = '@keyframes btxTypingDot{0%,80%,100%{transform:scale(0.6);opacity:0.5}40%{transform:scale(1);opacity:1}}';
+    document.head.appendChild(s);
+  }
+})();
+
 const state = {
   currentView: 'overview',
   admin: null,
@@ -15,7 +25,8 @@ const state = {
   },
   support: {
     activeTicketId: null,
-    pollInterval: null
+    pollInterval: null,
+    typingPollInterval: null
   }
 };
 
@@ -358,6 +369,10 @@ async function changeView(view) {
     if (state.support.pollInterval) {
       clearInterval(state.support.pollInterval);
       state.support.pollInterval = null;
+    }
+    if (state.support.typingPollInterval) {
+      clearInterval(state.support.typingPollInterval);
+      state.support.typingPollInterval = null;
     }
   }
   // Stop live trades auto-refresh when leaving P2P view
@@ -1623,13 +1638,28 @@ async function openTicket(ticketId) {
 
   await renderTicketChat(ticketId);
 
-  // Poll every 10 seconds
+  // Poll every 10 seconds for new messages
   if (state.support.pollInterval) clearInterval(state.support.pollInterval);
   state.support.pollInterval = setInterval(async () => {
     if (state.support.activeTicketId === ticketId && state.currentView === 'support') {
       await renderTicketChat(ticketId, true);
     }
   }, 10000);
+
+  // Poll every 2 seconds for typing indicator
+  if (state.support.typingPollInterval) clearInterval(state.support.typingPollInterval);
+  state.support.typingPollInterval = setInterval(async () => {
+    if (state.support.activeTicketId !== ticketId || state.currentView !== 'support') return;
+    try {
+      const res = await fetch(`/api/admin/support/ticket/${encodeURIComponent(ticketId)}/typing-status`, {
+        credentials: 'include'
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const el = document.getElementById('chatUserTyping');
+      if (el) el.style.display = data.userTyping ? 'block' : 'none';
+    } catch (_) {}
+  }, 2000);
 }
 
 async function renderTicketChat(ticketId, silent = false) {
@@ -1674,7 +1704,8 @@ async function renderTicketChat(ticketId, silent = false) {
             const senderName = isAdmin
               ? (msg.senderRole ? `${msg.sender || 'Admin'} (${msg.senderRole})` : (msg.sender || 'Admin'))
               : '👤 User';
-            const text = String(msg.text || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const hasImage = msg.image && typeof msg.image === 'string' && msg.image.startsWith('data:image/');
+            const hasText  = msg.text && String(msg.text).trim() && String(msg.text).trim() !== '📷 Photo';
             return `<div style="display:flex;flex-direction:column;max-width:80%;
                     ${isAdmin ? 'align-self:flex-end;align-items:flex-end;' : 'align-self:flex-start;align-items:flex-start;'}">
               <div style="background:${isAdmin ? 'rgba(0,229,255,0.10)' : 'var(--bg-card2)'};
@@ -1682,13 +1713,30 @@ async function renderTicketChat(ticketId, silent = false) {
                            border-radius:${isAdmin ? '14px 14px 2px 14px' : '14px 14px 14px 2px'};
                            padding:9px 14px;">
                 <p style="font-size:11px;font-weight:700;margin:0 0 4px;color:${isAdmin ? 'var(--accent)' : 'var(--green)'};">${escapeHtml(senderName)}</p>
-                <p style="font-size:13px;color:var(--text-1);margin:0;white-space:pre-wrap;line-height:1.55;">${escapeHtml(String(msg.text||''))}</p>
+                ${hasImage ? `<img src="${msg.image}" onclick="window.open(this.src,'_blank')" style="max-width:220px;max-height:220px;border-radius:8px;display:block;cursor:pointer;margin-bottom:${hasText?'6px':'0'};"/>` : ''}
+                ${hasText ? `<p style="font-size:13px;color:var(--text-1);margin:0;white-space:pre-wrap;line-height:1.55;">${escapeHtml(String(msg.text||''))}</p>` : ''}
               </div>
               <span style="font-size:10px;color:var(--text-2);margin-top:4px;opacity:.55;">${formatDate(msg.createdAt)}</span>
             </div>`;
           }).join('');
 
       if (wasAtBottom || !silent) chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      // Inject typing indicator after messages area if not present
+      if (!document.getElementById('chatUserTyping')) {
+        const typingEl = document.createElement('div');
+        typingEl.id = 'chatUserTyping';
+        typingEl.style.cssText = 'display:none;padding:6px 14px 4px;font-size:12px;color:var(--text-2);font-style:italic;';
+        typingEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;">
+          <span style="display:inline-flex;gap:3px;align-items:center;">
+            <span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;animation-delay:0s;"></span>
+            <span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;animation-delay:0.2s;"></span>
+            <span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;animation-delay:0.4s;"></span>
+          </span>
+          User is typing…
+        </span>`;
+        chatMessages.parentNode.insertBefore(typingEl, chatMessages.nextSibling);
+      }
     }
 
     // ─── Button states ───
