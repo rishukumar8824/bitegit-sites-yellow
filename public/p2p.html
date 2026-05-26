@@ -2509,7 +2509,7 @@
         reader.onload = function(ev) {
           var img = new Image();
           img.onload = function() {
-            var maxPx = 800, q = 0.82, target = 300*1024;
+            var maxPx = 600, q = 0.75, target = 60*1024; // keep under 60KB binary → ~80KB base64 → safe for 100KB JSON limit
             var attempt = function(px, quality, tries) {
               var canvas = document.createElement('canvas');
               var ratio = Math.min(px / img.width, px / img.height, 1);
@@ -2517,8 +2517,8 @@
               canvas.height = Math.round(img.height * ratio);
               canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
               var data = canvas.toDataURL('image/jpeg', quality);
-              if (data.length * 0.75 <= target || tries >= 5 || quality <= 0.35) { resolve(data); return; }
-              attempt(px > 400 ? 400 : px, Math.max(quality - 0.12, 0.35), tries + 1);
+              if (data.length * 0.75 <= target || tries >= 6 || quality <= 0.25) { resolve(data); return; }
+              attempt(px > 300 ? Math.round(px * 0.75) : px, Math.max(quality - 0.1, 0.25), tries + 1);
             };
             attempt(maxPx, q, 0);
           };
@@ -2730,10 +2730,15 @@
           var r2 = await fetch('/api/support/ticket/' + _spTicketId + '/user-reply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: msg, image: image })
+            body: JSON.stringify({ message: msg, image: image, name: (window._p2pUser && window._p2pUser.username) || '' })
           });
-          var d2 = await r2.json();
-          if (d2 && d2.messageId) _spSeenMsgIds.add(d2.messageId);
+          if (!r2.ok) {
+            var errTxt = r2.status === 413 ? 'Image too large. Try a smaller photo.' : 'Failed to send. Please retry.';
+            spAddBotBubble('<p style="color:#f6465d;">⚠ ' + errTxt + '</p>');
+          } else {
+            var d2 = await r2.json();
+            if (d2 && d2.messageId) _spSeenMsgIds.add(d2.messageId);
+          }
         } else {
           // No ticket yet — create one and send
           var r3 = await fetch('/api/support/chat', {
