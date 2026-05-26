@@ -2552,21 +2552,35 @@
     function spAddUserBubble(text, image) {
       var msgs = document.getElementById('spChatMessages');
       if (!msgs) return null;
+      // Outer wrapper aligns everything to right
       var ub = document.createElement('div');
       ub.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;margin:0.35rem 1rem;';
-      var bubble = document.createElement('div');
-      bubble.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;';
-      var inner = '';
-      if (image) inner += '<img src="' + image + '" onclick="window.open(this.src,\'_blank\')" style="max-width:180px;max-height:180px;border-radius:10px;display:block;cursor:pointer;margin-bottom:' + (text && text !== '📷 Photo' ? '4px' : '0') + '"/>';
-      if (text && text !== '📷 Photo') inner += '<span style="background:#00b8d4;color:#fff;border-radius:14px 14px 2px 14px;padding:0.45rem 0.85rem;font-size:0.85rem;font-weight:600;max-width:78%;display:inline-block;word-break:break-word;">' + text.replace(/</g,'&lt;') + '</span>';
-      if (!inner) inner = '<span style="background:#00b8d4;color:#fff;border-radius:14px 14px 2px 14px;padding:0.45rem 0.85rem;font-size:0.85rem;font-weight:600;">📷 Photo</span>';
-      bubble.innerHTML = inner;
-      // Sending indicator
+      // Content wrapper — limits max width, stacks image above text
+      var cw = document.createElement('div');
+      cw.style.cssText = 'max-width:78%;display:flex;flex-direction:column;align-items:flex-end;gap:4px;';
+      if (image) {
+        var imgEl = document.createElement('img');
+        imgEl.src = image;
+        imgEl.style.cssText = 'max-width:180px;max-height:180px;border-radius:10px;display:block;cursor:pointer;';
+        imgEl.onclick = function(){ window.open(this.src,'_blank'); };
+        cw.appendChild(imgEl);
+      }
+      if (text && text !== '📷 Photo') {
+        var sp = document.createElement('span');
+        sp.style.cssText = 'background:#00b8d4;color:#fff;border-radius:14px 14px 2px 14px;padding:0.45rem 0.85rem;font-size:0.85rem;font-weight:600;word-break:break-word;display:inline-block;';
+        sp.textContent = text;
+        cw.appendChild(sp);
+      } else if (!image) {
+        var sp2 = document.createElement('span');
+        sp2.style.cssText = 'background:#00b8d4;color:#fff;border-radius:14px 14px 2px 14px;padding:0.45rem 0.85rem;font-size:0.85rem;font-weight:600;';
+        sp2.textContent = '📷 Photo';
+        cw.appendChild(sp2);
+      }
+      // Send status row
       var statusEl = document.createElement('div');
-      statusEl.className = 'sp-send-status';
-      statusEl.style.cssText = 'font-size:0.7rem;color:rgba(255,255,255,0.45);margin-top:3px;text-align:right;';
+      statusEl.style.cssText = 'font-size:0.68rem;color:rgba(255,255,255,0.4);margin-top:2px;display:flex;align-items:center;gap:5px;justify-content:flex-end;';
       statusEl.textContent = '🕐 Sending…';
-      ub.appendChild(bubble);
+      ub.appendChild(cw);
       ub.appendChild(statusEl);
       msgs.appendChild(ub);
       spScroll();
