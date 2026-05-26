@@ -2650,7 +2650,7 @@
 
     async function spConnectAgent() {
       // Require login to connect with live agent
-      if (!window.currentUser || !window.currentUser.id) {
+      if (!window._p2pUser || !window._p2pUser.id) {
         spAddBotBubble('<p>🔒 <strong>Login required</strong></p><p style="font-size:0.82rem;opacity:0.8;">Please <a href="/p2p#auth" style="color:#00b8d4;text-decoration:underline;">log in</a> to chat with a live agent.</p>');
         return;
       }
@@ -2674,7 +2674,7 @@
         var r = await fetch('/api/support/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: 'User requested live agent connection', topic: _spCurrentTopic || 'General', connectAgent: true, name: (window.currentUser && window.currentUser.username) || '', email: (window.currentUser && window.currentUser.email) || '' })
+          body: JSON.stringify({ message: 'User requested live agent connection', topic: _spCurrentTopic || 'General', connectAgent: true, name: (window._p2pUser && window._p2pUser.username) || '', email: (window._p2pUser && window._p2pUser.email) || '' })
         });
         var data = await r.json();
         if (data.ticketId) {
@@ -2739,7 +2739,7 @@
           var r3 = await fetch('/api/support/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: msg, topic: _spCurrentTopic || 'General', image: image, name: (window.currentUser && window.currentUser.username) || '', email: (window.currentUser && window.currentUser.email) || '' })
+            body: JSON.stringify({ message: msg, topic: _spCurrentTopic || 'General', image: image, name: (window._p2pUser && window._p2pUser.username) || '', email: (window._p2pUser && window._p2pUser.email) || '' })
           });
           var d3 = await r3.json();
           if (d3.ticketId) {
