@@ -1638,13 +1638,13 @@ async function openTicket(ticketId) {
 
   await renderTicketChat(ticketId);
 
-  // Poll every 10 seconds for new messages
+  // Poll every 3 seconds for new messages (SSE also triggers instant refresh)
   if (state.support.pollInterval) clearInterval(state.support.pollInterval);
   state.support.pollInterval = setInterval(async () => {
     if (state.support.activeTicketId === ticketId && state.currentView === 'support') {
       await renderTicketChat(ticketId, true);
     }
-  }, 10000);
+  }, 3000);
 
   // Poll every 2 seconds for typing indicator
   if (state.support.typingPollInterval) clearInterval(state.support.typingPollInterval);
@@ -3701,8 +3701,21 @@ function connectSupportSSE() {
         const p2pBadge = document.getElementById('p2pDisputeBadge');
         if (p2pBadge) { p2pBadge.style.display = ''; p2pBadge.textContent = (parseInt(p2pBadge.textContent || '0') || 0) + 1; }
         if (state.currentView === 'p2p') { loadP2P().catch(() => {}); }
+      } else if (info && info.type === 'user_reply') {
+        // User sent a message — immediately refresh chat if this ticket is open
+        const badge = document.getElementById('supportBadge');
+        if (badge) { badge.style.display = ''; }
+        showSupportNotification(info);
+        if (state.currentView === 'support') {
+          if (state.support.activeTicketId && state.support.activeTicketId === info.ticketId) {
+            // Instantly refresh the open chat
+            renderTicketChat(info.ticketId, true).catch(() => {});
+          } else if (!state.support.activeTicketId) {
+            loadSupport().catch(() => {});
+          }
+        }
       } else {
-        // Support ticket
+        // New ticket or other support event
         _lastKnownOpenTicketCount++;
         const badge = document.getElementById('supportBadge');
         if (badge) { badge.style.display = ''; badge.textContent = _lastKnownOpenTicketCount; }
