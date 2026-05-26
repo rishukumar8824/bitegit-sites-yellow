@@ -1561,11 +1561,18 @@ async function loadSupport() {
     const avatarColors = ['#00b8d4','#02c076','#4263eb','#f6465d','#a855f7'];
     const avatarColor = avatarColors[avatarChar.charCodeAt(0) % avatarColors.length];
 
+    const onlineDot = ticket.userOnline
+      ? `<span title="Online" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;color:#02c076;"><span style="width:7px;height:7px;border-radius:50%;background:#02c076;display:inline-block;box-shadow:0 0 5px #02c076;"></span>Online</span>`
+      : `<span title="Offline" style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--text-2);"><span style="width:7px;height:7px;border-radius:50%;background:#555;display:inline-block;"></span>Offline</span>`;
+
     return `<div class="support-ticket-item${isActive ? ' active' : ''}"
          data-support-ticket-id="${ticket.id}"
          style="cursor:pointer;display:flex;gap:10px;align-items:flex-start;">
-      <!-- Avatar -->
-      <div style="width:34px;height:34px;border-radius:50%;background:${avatarColor}20;border:2px solid ${avatarColor}40;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${avatarColor};flex-shrink:0;margin-top:1px;">${avatarChar}</div>
+      <!-- Avatar with online ring -->
+      <div style="position:relative;flex-shrink:0;margin-top:1px;">
+        <div style="width:34px;height:34px;border-radius:50%;background:${avatarColor}20;border:2px solid ${ticket.userOnline ? '#02c076' : avatarColor + '40'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${avatarColor};">${avatarChar}</div>
+        <span style="position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:${ticket.userOnline ? '#02c076' : '#444'};border:2px solid var(--bg-card);${ticket.userOnline ? 'box-shadow:0 0 4px #02c076;' : ''}"></span>
+      </div>
       <!-- Content -->
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:2px;">
@@ -1575,6 +1582,7 @@ async function loadSupport() {
         <p style="font-size:11px;color:var(--text-2);margin:0 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(ticket.subject || 'No Subject')}</p>
         <p style="font-size:11px;color:var(--text-2);margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.65;">${escapeHtml(preview)}</p>
         <div style="display:flex;align-items:center;gap:5px;margin-top:4px;">
+          ${onlineDot}
           ${statusBadge(ticket.status || 'OPEN')}
           ${ticket.priority ? `<span style="font-size:10px;color:${priorityColor};font-weight:600;">${ticket.priority}</span>` : ''}
         </div>
@@ -1630,12 +1638,17 @@ async function renderTicketChat(ticketId, silent = false) {
 
     if (nameEl) {
       // Try to get user email from ticket or fallback to userId
-      const userLabel = ticket.email || ticket.userEmail || ticket.userId || 'Unknown User';
+      const userLabel = ticket.name || ticket.email || ticket.userEmail || ticket.userId || 'Unknown User';
       nameEl.textContent = userLabel;
       nameEl.title = userLabel;
     }
     if (subjectEl) subjectEl.textContent = ticket.subject || 'No Subject';
-    if (metaEl) metaEl.textContent = `ID: ${ticket.id} • Priority: ${ticket.priority || 'NORMAL'}`;
+    if (metaEl) {
+      const onlineTxt = ticket.userOnline
+        ? `<span style="color:#02c076;font-weight:700;">● Online</span>`
+        : `<span style="color:#888;">● Offline</span>`;
+      metaEl.innerHTML = `ID: ${escapeHtml(ticket.id)} • Priority: ${ticket.priority || 'NORMAL'} • ${onlineTxt}`;
+    }
     if (badgeEl) badgeEl.innerHTML = statusBadge(ticket.status || 'OPEN');
 
     // ─── Messages ───
