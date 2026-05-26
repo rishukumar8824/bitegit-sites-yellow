@@ -2551,17 +2551,64 @@
 
     function spAddUserBubble(text, image) {
       var msgs = document.getElementById('spChatMessages');
-      if (!msgs) return;
+      if (!msgs) return null;
       var ub = document.createElement('div');
-      ub.style.cssText = 'display:flex;justify-content:flex-end;margin:0.35rem 1rem;';
+      ub.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;margin:0.35rem 1rem;';
+      var bubble = document.createElement('div');
+      bubble.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;';
       var inner = '';
       if (image) inner += '<img src="' + image + '" onclick="window.open(this.src,\'_blank\')" style="max-width:180px;max-height:180px;border-radius:10px;display:block;cursor:pointer;margin-bottom:' + (text && text !== '📷 Photo' ? '4px' : '0') + '"/>';
       if (text && text !== '📷 Photo') inner += '<span style="background:#00b8d4;color:#fff;border-radius:14px 14px 2px 14px;padding:0.45rem 0.85rem;font-size:0.85rem;font-weight:600;max-width:78%;display:inline-block;word-break:break-word;">' + text.replace(/</g,'&lt;') + '</span>';
       if (!inner) inner = '<span style="background:#00b8d4;color:#fff;border-radius:14px 14px 2px 14px;padding:0.45rem 0.85rem;font-size:0.85rem;font-weight:600;">📷 Photo</span>';
-      ub.innerHTML = inner;
+      bubble.innerHTML = inner;
+      // Sending indicator
+      var statusEl = document.createElement('div');
+      statusEl.className = 'sp-send-status';
+      statusEl.style.cssText = 'font-size:0.7rem;color:rgba(255,255,255,0.45);margin-top:3px;text-align:right;';
+      statusEl.textContent = '🕐 Sending…';
+      ub.appendChild(bubble);
+      ub.appendChild(statusEl);
       msgs.appendChild(ub);
       spScroll();
+      return { el: ub, statusEl: statusEl };
     }
+
+    function spMarkSent(ref) {
+      if (!ref || !ref.statusEl) return;
+      ref.statusEl.textContent = '✓ Sent';
+      setTimeout(function(){ if (ref.statusEl) ref.statusEl.style.display = 'none'; }, 2000);
+    }
+
+    function spMarkFailed(ref, msg, image) {
+      if (!ref || !ref.statusEl) return;
+      ref.statusEl.innerHTML = '<span style="color:#f6465d;">⚠ Failed to send</span> &nbsp;' +
+        '<button onclick="spRetrySend(this,\'' + encodeURIComponent(msg||'') + '\',\'' + encodeURIComponent(image||'') + '\')" ' +
+        'style="background:#f6465d;color:#fff;border:none;border-radius:8px;padding:2px 10px;font-size:0.7rem;cursor:pointer;font-weight:600;">Retry</button>';
+    }
+
+    async function spRetrySend(btn, encodedMsg, encodedImage) {
+      var msg = decodeURIComponent(encodedMsg || '');
+      var image = decodeURIComponent(encodedImage || '');
+      if (btn) { btn.disabled = true; btn.textContent = '…'; }
+      var statusEl = btn ? btn.parentNode : null;
+      try {
+        var r = await fetch('/api/support/ticket/' + _spTicketId + '/user-reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, image: image, name: (window._p2pUser && window._p2pUser.username) || '' })
+        });
+        if (r.ok) {
+          var d = await r.json();
+          if (d && d.messageId) _spSeenMsgIds.add(d.messageId);
+          if (statusEl) { statusEl.textContent = '✓ Sent'; setTimeout(function(){ statusEl.style.display='none'; }, 2000); }
+        } else {
+          if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+        }
+      } catch(e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+      }
+    }
+    window.spRetrySend = spRetrySend;
 
     function spAddBotBubble(html) {
       var msgs = document.getElementById('spChatMessages');
@@ -2714,10 +2761,11 @@
       if (!msg && !image) return;
       inp.value = '';
       spClearImage();
-      spAddUserBubble(msg || '📷 Photo', image);
+      var ref = spAddUserBubble(msg || '📷 Photo', image);
 
       // If bot is still active (no live agent yet), handle with bot reply
       if (_spBotActive && !_spAgentConnected) {
+        if (ref) ref.statusEl.style.display = 'none'; // no status needed for bot
         if (msg) spBotAutoReply(msg);
         return;
       }
@@ -2733,11 +2781,11 @@
             body: JSON.stringify({ message: msg, image: image, name: (window._p2pUser && window._p2pUser.username) || '' })
           });
           if (!r2.ok) {
-            var errTxt = r2.status === 413 ? 'Image too large. Try a smaller photo.' : 'Failed to send. Please retry.';
-            spAddBotBubble('<p style="color:#f6465d;">⚠ ' + errTxt + '</p>');
+            spMarkFailed(ref, msg, image);
           } else {
             var d2 = await r2.json();
             if (d2 && d2.messageId) _spSeenMsgIds.add(d2.messageId);
+            spMarkSent(ref);
           }
         } else {
           // No ticket yet — create one and send
@@ -2751,9 +2799,14 @@
             _spTicketId = d3.ticketId;
             _spSeenMsgIds.add('init_' + d3.ticketId);
             spStartPolling(_spTicketId);
+            spMarkSent(ref);
+          } else {
+            spMarkFailed(ref, msg, image);
           }
         }
-      } catch(e) {}
+      } catch(e) {
+        spMarkFailed(ref, msg, image);
+      }
     }
 
     // Throttle helper: call fn at most once per 'wait' ms
