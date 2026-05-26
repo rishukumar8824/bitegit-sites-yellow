@@ -5339,15 +5339,28 @@ app.get('/api/admin/wallet/deposits', requiresAdminSession, async (req, res) => 
 });
 
 // ── Rate limiter: max 5 support tickets per IP per 10 minutes ────────────────
+// Rate limit for creating NEW tickets (strict: 5 per 10 min)
 const supportRateLimit = (() => {
   try {
     const rateLimit = require('express-rate-limit');
     return rateLimit({
-      windowMs: 10 * 60 * 1000,  // 10 minutes
+      windowMs: 10 * 60 * 1000,
       max: 5,
       message: { message: 'Too many support requests. Please wait 10 minutes before trying again.' },
-      standardHeaders: true,
-      legacyHeaders: false,
+      standardHeaders: true, legacyHeaders: false,
+      keyGenerator: (req) => req.ip || req.connection?.remoteAddress || 'unknown',
+    });
+  } catch (e) { return (req, res, next) => next(); }
+})();
+// Rate limit for chat REPLIES (lenient: 120 per 10 min = 1 per 5s average)
+const supportReplyRateLimit = (() => {
+  try {
+    const rateLimit = require('express-rate-limit');
+    return rateLimit({
+      windowMs: 10 * 60 * 1000,
+      max: 120,
+      message: { message: 'Too many messages. Please slow down.' },
+      standardHeaders: true, legacyHeaders: false,
       keyGenerator: (req) => req.ip || req.connection?.remoteAddress || 'unknown',
     });
   } catch (e) { return (req, res, next) => next(); }
@@ -5457,7 +5470,7 @@ app.get('/api/support/ticket/:ticketId/messages', async (req, res) => {
 });
 
 // ── Public: user sends a reply on an existing ticket ─────────────────────────
-app.post('/api/support/ticket/:ticketId/user-reply', supportRateLimit, async (req, res) => {
+app.post('/api/support/ticket/:ticketId/user-reply', supportReplyRateLimit, async (req, res) => {
   try {
     const { ticketId } = req.params;
     const { message, name, image } = req.body || {};
