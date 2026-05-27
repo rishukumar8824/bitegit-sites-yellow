@@ -4251,6 +4251,41 @@ app.post('/api/admin/merchant-applications/fix-deposits', requiresAdminSession, 
   }
 });
 
+// ── Admin: Silent wallet credit/debit (no user notification) ──
+app.post('/api/admin/wallets/adjust', requiresAdminSession, async (req, res) => {
+  try {
+    const { userId, email, amount, note } = req.body;
+    const { wallets, p2pCredentials } = getCollections();
+    const deltaAmount = Number(amount);
+    if (!deltaAmount || !isFinite(deltaAmount)) return res.status(400).json({ message: 'Invalid amount.' });
+    if (!userId && !email) return res.status(400).json({ message: 'userId or email required.' });
+
+    // Resolve userId from email if needed
+    let targetId = String(userId || '').trim();
+    if (!targetId && email) {
+      const cred = await p2pCredentials.findOne({ email: String(email).trim().toLowerCase() });
+      if (!cred) return res.status(404).json({ message: 'User not found.' });
+      targetId = cred.userId || cred.id;
+    }
+    if (!targetId) return res.status(404).json({ message: 'User not found.' });
+
+    // Get current wallet
+    const wallet = await wallets.findOne({ userId: targetId });
+    const current = Number((wallet || {}).availableBalance || (wallet || {}).balance || 0);
+    const newBalance = Math.max(0, current + deltaAmount);
+
+    await wallets.updateOne(
+      { userId: targetId },
+      { $set: { availableBalance: newBalance, balance: newBalance, updatedAt: new Date() } },
+      { upsert: true }
+    );
+
+    return res.json({ success: true, userId: targetId, before: current, after: newBalance, delta: deltaAmount, note: note || '' });
+  } catch (err) {
+    return res.status(500).json({ message: err.message || 'Server error.' });
+  }
+});
+
 // ── Admin: Cap all merchant wallet balances to a max amount ──
 app.post('/api/admin/wallets/cap-merchant-balances', requiresAdminSession, async (req, res) => {
   try {
