@@ -2990,5 +2990,42 @@ function cookieDecline() {
   if (el) { el.style.transform='translateY(140%)'; el.style.opacity='0'; }
 }
 </script>
+<script>
+(function() {
+  var lastScrollY = 0;
+  var ticking = false;
+  function onCardsScroll() {
+    if (!ticking) {
+      requestAnimationFrame(function() {
+        var cards = document.getElementById('p2pCards');
+        var ctrl  = document.querySelector('.gt-controls');
+        if (!cards || !ctrl) { ticking = false; return; }
+        var cur = cards.scrollTop;
+        if (cur > lastScrollY && cur > 10) {
+          ctrl.classList.add('p2p-ctrl-collapsed');
+        } else if (cur < lastScrollY) {
+          ctrl.classList.remove('p2p-ctrl-collapsed');
+        }
+        lastScrollY = cur;
+        ticking = false;
+      });
+      ticking = true;
+    }
+  }
+  function attachCardsScroll() {
+    var cards = document.getElementById('p2pCards');
+    if (cards) {
+      cards.addEventListener('scroll', onCardsScroll, { passive: true });
+    } else {
+      setTimeout(attachCardsScroll, 500);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachCardsScroll);
+  } else {
+    attachCardsScroll();
+  }
+})();
+</script>
 </body>
 </html>
