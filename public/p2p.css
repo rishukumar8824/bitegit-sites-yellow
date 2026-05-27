@@ -634,8 +634,18 @@ body.p2p-kyc-open { overflow: hidden; }
 }
 
 /* ===== GATE.IO CONTROLS ===== */
-.gt-controls { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 0.5rem; will-change: transform, opacity, max-height; transition: transform 0.22s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease, max-height 0.25s cubic-bezier(0.4,0,0.2,1), margin 0.25s ease; transform: translateY(0); opacity: 1; max-height: 200px; overflow: hidden; }
-.gt-controls.p2p-ctrl-collapsed { transform: translateY(-8px); opacity: 0; max-height: 0 !important; margin-bottom: 0 !important; pointer-events: none; }
+/* ── scroll-hide wrapper (grid-rows = smooth, no layout jank) ── */
+.gt-controls-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.24s ease, opacity 0.2s ease;
+  opacity: 1;
+}
+.gt-controls-wrap.p2p-ctrl-collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.gt-controls { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 0.5rem; min-height: 0; overflow: hidden; }
 .gt-controls-row1 { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .gt-side-tabs { display: flex; gap: 0; }
 .gt-side-tab { min-height: 44px; padding: 0 1.1rem; border: none; border-bottom: 2.5px solid transparent; background: transparent; color: #6b7690; font-size: 1.05rem; font-weight: 700; cursor: pointer; font-family: 'Manrope', sans-serif; transition: color 0.15s, border-color 0.15s; }
@@ -3376,6 +3386,7 @@ body.mob-screen-open .p2p-secondary-nav {
   }
 
   body.p2p-page[data-mobile-tab="p2p"]:not(.mob-screen-open) .p2p-board-topbar,
+  body.p2p-page[data-mobile-tab="p2p"]:not(.mob-screen-open) .gt-controls-wrap,
   body.p2p-page[data-mobile-tab="p2p"]:not(.mob-screen-open) .gt-controls,
   body.p2p-page[data-mobile-tab="p2p"]:not(.mob-screen-open) .p2p-alert-bar,
   body.p2p-page[data-mobile-tab="p2p"]:not(.mob-screen-open) #loadMoreOffersBtn {
