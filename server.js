@@ -2670,7 +2670,19 @@ app.get('/api/deposits', requiresP2PUser, async (req, res) => {
 
   const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit || 20), 10) || 20));
   try {
-    const deposits = await adminStore.listUserDeposits(req.p2pUser.id, { limit });
+    const primaryId = req.p2pUser.id;
+    const altId = req.p2pUser.altId || null;
+    let deposits = await adminStore.listUserDeposits(primaryId, { limit });
+    // Also fetch by altId (cross-identity: admin JWT vs session cookie give different IDs for same user)
+    if (altId && altId !== primaryId) {
+      const altDeposits = await adminStore.listUserDeposits(altId, { limit });
+      // Merge & deduplicate by id
+      const seen = new Set(deposits.map(d => d.id));
+      for (const d of altDeposits) {
+        if (!seen.has(d.id)) { seen.add(d.id); deposits.push(d); }
+      }
+      deposits.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
     return res.json({
       total: deposits.length,
       deposits
@@ -2715,8 +2727,10 @@ app.post(
     }
 
     try {
+      // Use credential userId (altId) if available — keeps deposits findable regardless of which token is used
+      const depositUserId = req.p2pUser.altId || req.p2pUser.id;
       const deposit = await adminStore.createDepositRequest({
-        userId: req.p2pUser.id,
+        userId: depositUserId,
         email: req.p2pUser.email,
         username: req.p2pUser.username,
         coin,
