@@ -111,7 +111,7 @@
       <section class="p2p-board">
 
         <!-- Gate.io style top controls -->
-        <div class="gt-controls">
+        <div class="gt-controls-wrap"><div class="gt-controls">
           <!-- Row 1: Buy/Sell + Refresh + Filter + Currency -->
           <div class="gt-controls-row1">
             <div id="sideTabs" class="gt-side-tabs">
@@ -183,7 +183,7 @@
               </div>
             </div>
           </div>
-        </div>
+        </div></div><!-- /gt-controls-wrap -->
 
         <!-- Hidden legacy inputs kept for JS compatibility -->
         <input id="paymentFilter" type="hidden" value=""/>
@@ -2992,55 +2992,36 @@ function cookieDecline() {
 </script>
 <script>
 (function() {
-  var lastScrollY = 0;
-  var ticking = false;
-  var collapsed = false;
-
-  function applyState(scrollingDown) {
-    var ctrl = document.querySelector('.gt-controls');
+  var lastY = 0, collapsed = false, raf = null;
+  function setState(hide) {
+    if (hide === collapsed) return;
+    collapsed = hide;
+    var wrap = document.querySelector('.gt-controls-wrap');
     var nav  = document.querySelector('.p2p-mobile-bottom-nav');
-    if (scrollingDown && !collapsed) {
-      collapsed = true;
-      if (ctrl) ctrl.classList.add('p2p-ctrl-collapsed');
-      if (nav)  nav.classList.add('p2p-nav-hidden');
-    } else if (!scrollingDown && collapsed) {
-      collapsed = false;
-      if (ctrl) ctrl.classList.remove('p2p-ctrl-collapsed');
-      if (nav)  nav.classList.remove('p2p-nav-hidden');
-    }
+    if (wrap) wrap.classList.toggle('p2p-ctrl-collapsed', hide);
+    if (nav)  nav.classList.toggle('p2p-nav-hidden', hide);
   }
-
-  function onCardsScroll() {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(function() {
-      var cards = document.getElementById('p2pCards');
-      if (cards) {
-        var cur = cards.scrollTop;
-        var diff = cur - lastScrollY;
-        if (Math.abs(diff) > 4) {
-          applyState(diff > 0 && cur > 40);
-          lastScrollY = cur;
-        }
-      }
-      ticking = false;
+  function onScroll() {
+    if (raf) return;
+    raf = requestAnimationFrame(function() {
+      raf = null;
+      var el = document.getElementById('p2pCards');
+      if (!el) return;
+      var y = el.scrollTop;
+      var d = y - lastY;
+      if (d > 8)       setState(true);
+      else if (d < -8) setState(false);
+      lastY = y;
     });
   }
-
-  function attachCardsScroll() {
-    var cards = document.getElementById('p2pCards');
-    if (cards) {
-      cards.addEventListener('scroll', onCardsScroll, { passive: true });
-    } else {
-      setTimeout(attachCardsScroll, 600);
-    }
+  function init() {
+    var el = document.getElementById('p2pCards');
+    if (el) el.addEventListener('scroll', onScroll, { passive: true });
+    else setTimeout(init, 500);
   }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', attachCardsScroll);
-  } else {
-    attachCardsScroll();
-  }
+  document.readyState === 'loading'
+    ? document.addEventListener('DOMContentLoaded', init)
+    : init();
 })();
 </script>
 </body>
