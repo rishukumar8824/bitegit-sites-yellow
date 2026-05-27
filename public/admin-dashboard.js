@@ -26,8 +26,7 @@ const state = {
   support: {
     activeTicketId: null,
     pollInterval: null,
-    typingPollInterval: null,
-    typingHideTimer: null
+    typingPollInterval: null
   }
 };
 
@@ -939,14 +938,13 @@ async function loadWallet() {
           <div><span class="text-slate-500">User:</span> ${escapeHtml(userLabel)}</div>
           <div><span class="text-slate-500">User ID:</span> ${row.userId ? `<button style="color:#60a5fa;text-decoration:underline;background:none;border:none;cursor:pointer;padding:0;font-size:inherit;" data-open-user-balance="${escapeHtml(row.userId)}">${escapeHtml(row.userId)}</button>` : '-'}</div>
           <div><span class="text-slate-500">Network:</span> ${escapeHtml(network)}</div>
-          <div style="word-break:break-all;display:flex;align-items:flex-start;gap:6px;"><span class="text-slate-500" style="flex-shrink:0;">Address:</span><span id="wdAddr_${escapeHtml(withdrawalId)}" style="flex:1;">${escapeHtml(address)}</span></div>
+          <div style="word-break:break-all;display:flex;align-items:flex-start;gap:6px;"><span class="text-slate-500" style="flex-shrink:0;">Address:</span><span style="flex:1;">${escapeHtml(address)}</span>${canReview ? `<button onclick="wdEditAddress('${escapeHtml(withdrawalId)}', null)" style="background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.3);color:#00e5ff;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;flex-shrink:0;">✏️ Edit</button>` : ''}</div>
           ${row.reason || (row.metadata && row.metadata.reason) ? `<div><span class="text-slate-500">Reason:</span> <span style="color:#f6465d;font-weight:600;">${escapeHtml(row.reason || (row.metadata && row.metadata.reason) || '')}</span></div>` : ''}
           <div><span class="text-slate-500">Created:</span> ${escapeHtml(formatDate(row.createdAt))}</div>
         </div>
-        <div class="mt-3 grid gap-2" style="grid-template-columns:1fr 1fr;row-gap:8px;">
-          <button class="btn-primary${disabledClass}" data-withdrawal-action="approve" data-withdrawal-id="${escapeHtml(withdrawalId || row.id)}"${disabledAttr}>✓ Approve</button>
-          <button class="btn-danger${disabledClass}" data-withdrawal-action="reject" data-withdrawal-id="${escapeHtml(withdrawalId || row.id)}"${disabledAttr}>✕ Reject</button>
-          ${canReview ? `<button onclick="wdEditAddress('${escapeHtml(withdrawalId)}')" colspan="2" style="grid-column:1/-1;padding:8px;border-radius:8px;border:1px solid rgba(0,229,255,0.35);background:rgba(0,229,255,0.07);color:#00e5ff;font-size:12px;font-weight:600;cursor:pointer;letter-spacing:0.3px;">✏️ Edit Address</button>` : ''}
+        <div class="mt-3 grid grid-cols-2 gap-2">
+          <button class="btn-primary${disabledClass}" data-withdrawal-action="approve" data-withdrawal-id="${escapeHtml(withdrawalId || row.id)}"${disabledAttr}>Approve</button>
+          <button class="btn-danger${disabledClass}" data-withdrawal-action="reject" data-withdrawal-id="${escapeHtml(withdrawalId || row.id)}"${disabledAttr}>Reject</button>
         </div>
       </article>
     `;
@@ -2595,7 +2593,7 @@ async function handleP2PActions(event) {
     }
 
     if (action === 'release-order') {
-      await apiRequest(`/p2p/orders/${encodeURIComponent(orderId)}/admin-release`, {
+      await apiRequest(`/p2p/orders/${encodeURIComponent(orderId)}/release`, {
         method: 'POST',
         body: JSON.stringify({})
       });
@@ -3691,40 +3689,14 @@ function connectSupportSSE() {
         const p2pBadge = document.getElementById('p2pDisputeBadge');
         if (p2pBadge) { p2pBadge.style.display = ''; p2pBadge.textContent = (parseInt(p2pBadge.textContent || '0') || 0) + 1; }
         if (state.currentView === 'p2p') { loadP2P().catch(() => {}); }
-      } else if (info && info.type === 'user_typing') {
-        // User is typing — show indicator instantly via SSE (no poll needed)
-        if (state.currentView === 'support' && state.support.activeTicketId === info.ticketId) {
-          // Ensure typing indicator element exists
-          let typingEl = document.getElementById('chatUserTyping');
-          if (!typingEl) {
-            const chatMessages = document.getElementById('supportChatMessages');
-            if (chatMessages) {
-              typingEl = document.createElement('div');
-              typingEl.id = 'chatUserTyping';
-              typingEl.style.cssText = 'padding:4px 16px 6px;font-size:12px;color:#00b8d4;font-style:italic;flex-shrink:0;';
-              typingEl.innerHTML = `<span style="display:inline-flex;align-items:center;gap:6px;"><span style="display:inline-flex;gap:3px;align-items:center;"><span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;"></span><span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;animation-delay:0.2s;"></span><span style="width:5px;height:5px;border-radius:50%;background:#00b8d4;animation:btxTypingDot 1.2s infinite ease-in-out;animation-delay:0.4s;"></span></span>User is typing…</span>`;
-              chatMessages.parentNode.insertBefore(typingEl, chatMessages.nextSibling);
-            }
-          }
-          if (typingEl) typingEl.style.display = 'block';
-          // Auto-hide after 4s if no more signals arrive
-          if (state.support.typingHideTimer) clearTimeout(state.support.typingHideTimer);
-          state.support.typingHideTimer = setTimeout(() => {
-            const el = document.getElementById('chatUserTyping');
-            if (el) el.style.display = 'none';
-          }, 4000);
-        }
       } else if (info && info.type === 'user_reply') {
         // User sent a message — immediately refresh chat if this ticket is open
-        // Also hide typing indicator since message was sent
-        if (state.support.typingHideTimer) { clearTimeout(state.support.typingHideTimer); state.support.typingHideTimer = null; }
-        const typingEl = document.getElementById('chatUserTyping');
-        if (typingEl) typingEl.style.display = 'none';
         const badge = document.getElementById('supportBadge');
         if (badge) { badge.style.display = ''; }
         showSupportNotification(info);
         if (state.currentView === 'support') {
           if (state.support.activeTicketId && state.support.activeTicketId === info.ticketId) {
+            // Instantly refresh the open chat
             renderTicketChat(info.ticketId, true).catch(() => {});
           } else if (!state.support.activeTicketId) {
             loadSupport().catch(() => {});
@@ -4191,7 +4163,7 @@ function _wdRenderRows(withdrawals) {
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Username:</span> <span style="color:#c9d1d9;">${userName}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Email:</span> <span style="color:#00e5ff;">${userEmail !== '-' ? userEmail : '<span style="color:#848e9c;">-</span>'}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Network:</span> ${escapeHtml(w.network || '-')}</div>
-          <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;">Address:</span><span id="wdAddr_${escapeHtml(id)}">${escapeHtml(address)}</span></div>
+          <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;">Address:</span><span id="wdAddr_${idx}">${escapeHtml(address)}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Fee:</span> ${escapeHtml(fee)} USDT</div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Request ID:</span> <span style="font-size:10px;word-break:break-all;">${escapeHtml(id || '-')}</span></div>
           <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Submitted:</span> ${escapeHtml(createdAt)}</div>
@@ -4204,7 +4176,7 @@ function _wdRenderRows(withdrawals) {
           <button onclick="wdAction('${escapeHtml(id)}','REJECTED',this)"
             style="background:#f6465d;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;">✕ Reject</button>
         </div>
-        <button onclick="wdEditAddress('${escapeHtml(id)}')"
+        <button onclick="wdEditAddress('${escapeHtml(id)}','wdAddr_${idx}')"
           style="width:100%;background:rgba(0,229,255,0.1);border:1px solid rgba(0,229,255,0.4);color:#00e5ff;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:800;cursor:pointer;">✏️ Edit Address</button>
       </div>
     </div>`;
@@ -4283,20 +4255,18 @@ async function openWithdrawalPanel() {
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Username:</span> <b style="color:#eaecef;">${userName}</b></div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Email:</span> ${userEmail}</div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Network:</span> ${escapeHtml(w.network || '-')}</div>
-            <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;">Address:</span><span id="wdAddr_${escapeHtml(id)}">${escapeHtml(address)}</span></div>
+            <div style="word-break:break-all;"><span style="color:#848e9c;min-width:90px;display:inline-block;">Address:</span> ${escapeHtml(address)}</div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Fee:</span> ${escapeHtml(fee)} USDT</div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Request ID:</span> <span style="font-size:10px;word-break:break-all;">${escapeHtml(id || '-')}</span></div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Submitted:</span> ${escapeHtml(createdAt)}</div>
             <div><span style="color:#848e9c;min-width:90px;display:inline-block;">Processed:</span> ${escapeHtml(processedAt)}</div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <button onclick="wdAction('${escapeHtml(id)}','APPROVED',this)"
-              style="background:#02c076;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;">✓ Approve</button>
+              style="background:#02c076;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;">Approve</button>
             <button onclick="wdAction('${escapeHtml(id)}','REJECTED',this)"
-              style="background:#f6465d;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;">✕ Reject</button>
+              style="background:#f6465d;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:12px;font-weight:800;cursor:pointer;">Reject</button>
           </div>
-          <button onclick="wdEditAddress('${escapeHtml(id)}')"
-            style="width:100%;background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.35);color:#00e5ff;border-radius:8px;padding:9px 14px;font-size:12px;font-weight:700;cursor:pointer;">✏️ Edit Address</button>
         </div>
       </div>`;
     }).join('');
@@ -4364,67 +4334,19 @@ async function wdAction(withdrawalId, decision, btn) {
   }
 }
 
-async function wdEditAddress(withdrawalId) {
-  const spanId = 'wdAddr_' + withdrawalId;
+async function wdEditAddress(withdrawalId, spanId) {
   const span = document.getElementById(spanId);
   const currentAddr = span ? span.textContent.trim() : '';
-
-  return new Promise((resolve) => {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
-    overlay.innerHTML = `
-      <div style="background:#0d1117;border:1px solid rgba(0,229,255,0.25);border-radius:14px;padding:24px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <h3 style="color:#e2e8f0;font-size:15px;font-weight:700;margin:0;">✏️ Edit Withdrawal Address</h3>
-          <span style="color:#848e9c;font-size:11px;background:rgba(246,70,93,0.12);border:1px solid rgba(246,70,93,0.25);border-radius:5px;padding:2px 8px;">Admin Only</span>
-        </div>
-        <p style="font-size:11px;color:#64748b;margin:0 0 16px;">User won't be notified. Only edit if you're sure the address is correct.</p>
-        <label style="font-size:11px;color:#848e9c;display:block;margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Current Address</label>
-        <div style="background:#060a10;border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:9px 12px;font-size:11px;color:#64748b;word-break:break-all;margin-bottom:14px;font-family:monospace;">${escapeHtml(currentAddr || '—')}</div>
-        <label style="font-size:11px;color:#848e9c;display:block;margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">New Address</label>
-        <input id="wdNewAddrInput" type="text" value="${escapeHtml(currentAddr)}" placeholder="Enter correct wallet address"
-          style="width:100%;box-sizing:border-box;background:#060a10;border:1px solid rgba(0,229,255,0.3);border-radius:8px;padding:10px 12px;font-size:13px;color:#e2e8f0;outline:none;font-family:monospace;margin-bottom:18px;" />
-        <div style="display:flex;gap:10px;">
-          <button id="wdEditCancelBtn" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#848e9c;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
-          <button id="wdEditSaveBtn" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#00b8d4,#0070a8);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">Save Address</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    const input = overlay.querySelector('#wdNewAddrInput');
-    input.focus();
-    input.select();
-
-    overlay.querySelector('#wdEditCancelBtn').onclick = () => { document.body.removeChild(overlay); resolve(null); };
-
-    overlay.querySelector('#wdEditSaveBtn').onclick = async () => {
-      const newAddr = input.value.trim();
-      if (!newAddr) { input.style.borderColor = '#f6465d'; input.focus(); return; }
-      if (newAddr === currentAddr) { document.body.removeChild(overlay); resolve(null); return; }
-
-      const saveBtn = overlay.querySelector('#wdEditSaveBtn');
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving…';
-      try {
-        await apiRequest(`/wallet/withdrawals/${encodeURIComponent(withdrawalId)}/address`, {
-          method: 'PATCH',
-          body: JSON.stringify({ address: newAddr })
-        });
-        if (span) span.textContent = newAddr;
-        document.body.removeChild(overlay);
-        showMessage('Address updated successfully.', 'success');
-        resolve(newAddr);
-      } catch(e) {
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Save Address';
-        input.style.borderColor = '#f6465d';
-        showMessage(e.message || 'Failed to update address', 'error');
-      }
-    };
-
-    // Close on backdrop click
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) { document.body.removeChild(overlay); resolve(null); } });
-    // Enter key saves
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') overlay.querySelector('#wdEditSaveBtn').click(); });
-  });
+  const newAddr = window.prompt('New withdrawal address:', currentAddr);
+  if (!newAddr || newAddr === currentAddr) return;
+  try {
+    await apiRequest(`/wallet/withdrawals/${encodeURIComponent(withdrawalId)}/address`, {
+      method: 'PATCH',
+      body: JSON.stringify({ address: newAddr })
+    });
+    if (span) span.textContent = newAddr;
+    showMessage('Address updated successfully.', 'success');
+  } catch(e) {
+    showMessage(e.message || 'Failed to update address', 'error');
+  }
 }
