@@ -5,6 +5,24 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
   <meta name="theme-color" content="#000000"/>
   <title>Wallet — Bitegit</title>
+  <script>
+  // Device fingerprint — sent as X-Device-FP header with every fetch
+  (function(){
+    function genFp(){
+      var c=document.createElement('canvas'),ctx=c.getContext('2d');
+      ctx.textBaseline='top';ctx.font='14px Arial';ctx.fillText('bitegit🔑',2,2);
+      var raw=[navigator.userAgent,navigator.language,screen.width+'x'+screen.height,screen.colorDepth,new Date().getTimezoneOffset(),navigator.hardwareConcurrency||'',navigator.platform||'',c.toDataURL()].join('|');
+      var h=0;for(var i=0;i<raw.length;i++){h=Math.imul(31,h)+raw.charCodeAt(i)|0;}
+      return 'fp_'+(h>>>0).toString(16);
+    }
+    try{
+      var fp=localStorage.getItem('_bfp');
+      if(!fp){fp=genFp();localStorage.setItem('_bfp',fp);}
+      var origFetch=window.fetch;
+      window.fetch=function(url,opts){opts=opts||{};opts.headers=Object.assign({'X-Device-FP':fp},opts.headers||{});return origFetch(url,opts);};
+    }catch(e){}
+  })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
   <link rel="stylesheet" href="/mobile-nav.css"/>
   <style>
