@@ -438,9 +438,11 @@ app.use((req, res, next) => {
     req.path.includes('/kyc') ||
     req.path.includes('/orders') ||   // P2P chat images
     req.path.includes('/profile') ||  // avatar
-    req.path.includes('/support')     // support chat images
+    req.path.includes('/support') ||  // support chat images
+    req.path.includes('/deposit') ||  // deposit screenshots
+    req.path.includes('/withdraw')    // withdrawal screenshots
   );
-  return express.json({ limit: isImageRoute ? '5mb' : '100kb' })(req, res, next);
+  return express.json({ limit: isImageRoute ? '10mb' : '100kb' })(req, res, next);
 });
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use(sanitizeRequestPayload);
