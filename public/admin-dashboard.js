@@ -1440,7 +1440,7 @@ async function loadP2P() {
         const shortId = String(o.id || '').slice(-8).toUpperCase();
         const buyer  = o.buyerUsername  || o.buyerEmail  || (o.buyerUserId  ? o.buyerUserId.slice(-6)  : '—');
         const seller = o.sellerUsername || o.sellerEmail || (o.sellerUserId ? o.sellerUserId.slice(-6) : '—');
-        const amt    = Number(o.amount || o.cryptoAmount || 0).toFixed(4);
+        const amt    = Number(o.assetAmount || o.escrowAmount || o.amount || o.cryptoAmount || 0).toFixed(4);
         const asset  = String(o.asset || o.coin || 'USDT').toUpperCase();
         const created = o.createdAt ? new Date(o.createdAt).toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
         const releaseBtn = (s === 'PAID' || s === 'PAYMENT_SENT')
