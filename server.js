@@ -4332,16 +4332,39 @@ app.post('/api/admin/users/:userId/block', requiresAdminSession, async (req, res
     const now = new Date();
     const adminLabel = req.adminUser?.email || 'admin';
 
-    // Get user's last known IP + fingerprint from credentials (saved on every request)
+    // Get user's last known IP + fingerprint — try credentials first, then audit logs
     const cred = await p2pCredentials.findOne(
       { $or: [{ userId }, { altUserId: userId }] },
-      { projection: { lastIp: 1, lastFingerprint: 1 } }
+      { projection: { lastIp: 1, lastFingerprint: 1, email: 1 } }
     );
-    const ip = cred?.lastIp || null;
+    let ip = cred?.lastIp || null;
     const fingerprint = cred?.lastFingerprint || null;
 
+    // Fallback: get IP from audit logs (login_success events always store IP)
+    if (!ip) {
+      try {
+        const { auditLogs } = getCollections();
+        if (auditLogs) {
+          const logEntry = await auditLogs.findOne(
+            { userId, action: 'login_success', ipAddress: { $exists: true, $ne: '' } },
+            { sort: { createdAt: -1 }, projection: { ipAddress: 1 } }
+          );
+          if (!logEntry?.ipAddress) {
+            // Also try by email in metadata
+            const emailEntry = await auditLogs.findOne(
+              { 'metadata.email': cred?.email, action: 'login_success', ipAddress: { $exists: true, $ne: '' } },
+              { sort: { createdAt: -1 }, projection: { ipAddress: 1 } }
+            );
+            if (emailEntry?.ipAddress) ip = emailEntry.ipAddress;
+          } else {
+            ip = logEntry.ipAddress;
+          }
+        }
+      } catch (_) {}
+    }
+
     if (!ip && !fingerprint) {
-      return res.status(404).json({ message: 'No IP or device data found for this user. Ask them to visit the site first.' });
+      return res.status(400).json({ message: 'No IP or device data found yet. User needs to login once after latest deploy.' });
     }
 
     const results = {};
