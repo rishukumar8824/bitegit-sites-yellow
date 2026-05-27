@@ -2994,32 +2994,48 @@ function cookieDecline() {
 (function() {
   var lastScrollY = 0;
   var ticking = false;
-  function onCardsScroll() {
-    if (!ticking) {
-      requestAnimationFrame(function() {
-        var cards = document.getElementById('p2pCards');
-        var ctrl  = document.querySelector('.gt-controls');
-        if (!cards || !ctrl) { ticking = false; return; }
-        var cur = cards.scrollTop;
-        if (cur > lastScrollY && cur > 10) {
-          ctrl.classList.add('p2p-ctrl-collapsed');
-        } else if (cur < lastScrollY) {
-          ctrl.classList.remove('p2p-ctrl-collapsed');
-        }
-        lastScrollY = cur;
-        ticking = false;
-      });
-      ticking = true;
+  var collapsed = false;
+
+  function applyState(scrollingDown) {
+    var ctrl = document.querySelector('.gt-controls');
+    var nav  = document.querySelector('.p2p-mobile-bottom-nav');
+    if (scrollingDown && !collapsed) {
+      collapsed = true;
+      if (ctrl) ctrl.classList.add('p2p-ctrl-collapsed');
+      if (nav)  nav.classList.add('p2p-nav-hidden');
+    } else if (!scrollingDown && collapsed) {
+      collapsed = false;
+      if (ctrl) ctrl.classList.remove('p2p-ctrl-collapsed');
+      if (nav)  nav.classList.remove('p2p-nav-hidden');
     }
   }
+
+  function onCardsScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function() {
+      var cards = document.getElementById('p2pCards');
+      if (cards) {
+        var cur = cards.scrollTop;
+        var diff = cur - lastScrollY;
+        if (Math.abs(diff) > 4) {
+          applyState(diff > 0 && cur > 40);
+          lastScrollY = cur;
+        }
+      }
+      ticking = false;
+    });
+  }
+
   function attachCardsScroll() {
     var cards = document.getElementById('p2pCards');
     if (cards) {
       cards.addEventListener('scroll', onCardsScroll, { passive: true });
     } else {
-      setTimeout(attachCardsScroll, 500);
+      setTimeout(attachCardsScroll, 600);
     }
   }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', attachCardsScroll);
   } else {
