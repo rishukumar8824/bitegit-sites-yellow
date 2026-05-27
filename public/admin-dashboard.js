@@ -3259,6 +3259,36 @@ async function upAction(action) {
     } else if (action === 'force-logout') {
       await apiRequest(`/users/${encodeURIComponent(_upUserId)}/force-logout`, { method:'POST', body:JSON.stringify({}) });
       showMessage('User force logged out.','success');
+    } else if (action === 'block-ip') {
+      const d = await apiRequest(`/users/${encodeURIComponent(_upUserId)}/block`, { method:'POST', body:JSON.stringify({type:'ip'}) });
+      const el = document.getElementById('upBlockStatus');
+      if (el) el.innerHTML = `<span style="color:#f6465d;">🌐 IP Blocked: <b>${d.ip||'—'}</b></span>`;
+      showMessage(`IP blocked: ${d.ip||'done'}`,'success');
+    } else if (action === 'unblock-ip') {
+      const d = await apiRequest(`/users/${encodeURIComponent(_upUserId)}/unblock`, { method:'POST', body:JSON.stringify({type:'ip'}) });
+      const el = document.getElementById('upBlockStatus');
+      if (el) el.innerHTML = `<span style="color:#0ecb81;">🌐 IP Unblocked</span>`;
+      showMessage('IP unblocked','success');
+    } else if (action === 'block-device') {
+      const d = await apiRequest(`/users/${encodeURIComponent(_upUserId)}/block`, { method:'POST', body:JSON.stringify({type:'device'}) });
+      const el = document.getElementById('upBlockStatus');
+      if (el) el.innerHTML = `<span style="color:#f6465d;">📱 Device Blocked</span>`;
+      showMessage('Device blocked','success');
+    } else if (action === 'unblock-device') {
+      await apiRequest(`/users/${encodeURIComponent(_upUserId)}/unblock`, { method:'POST', body:JSON.stringify({type:'device'}) });
+      const el = document.getElementById('upBlockStatus');
+      if (el) el.innerHTML = `<span style="color:#0ecb81;">📱 Device Unblocked</span>`;
+      showMessage('Device unblocked','success');
+    } else if (action === 'block-all') {
+      const d = await apiRequest(`/users/${encodeURIComponent(_upUserId)}/block`, { method:'POST', body:JSON.stringify({type:'all'}) });
+      const el = document.getElementById('upBlockStatus');
+      if (el) el.innerHTML = `<span style="color:#f6465d;">🔴 IP + Device Blocked: <b>${d.ip||'—'}</b></span>`;
+      showMessage('IP + Device blocked','success');
+    } else if (action === 'unblock-all') {
+      await apiRequest(`/users/${encodeURIComponent(_upUserId)}/unblock`, { method:'POST', body:JSON.stringify({type:'all'}) });
+      const el = document.getElementById('upBlockStatus');
+      if (el) el.innerHTML = `<span style="color:#0ecb81;">🟢 All blocks removed</span>`;
+      showMessage('All blocks removed','success');
     } else if (action === 'adjust') {
       const type   = document.getElementById('upAdjustType').value;
       const amount = parseFloat(document.getElementById('upAdjustAmount').value);
