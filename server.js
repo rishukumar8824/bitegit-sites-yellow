@@ -467,7 +467,8 @@ app.use(async function ipBlockMiddleware(req, res, next) {
   if (Date.now() - _blockedIpCacheTs > 30000) await refreshBlockedIpCache();
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
   if (ip && _blockedIpCache.has(ip)) {
-    return res.status(403).send('<!DOCTYPE html><html><head><title>403</title><meta name="robots" content="noindex"></head><body style="background:#0a0e17;color:#333;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;"><div style="text-align:center;"><div style="font-size:48px;margin-bottom:16px;">⏳</div><div style="font-size:16px;color:#444;">Loading…</div></div></body></html>');
+    try { req.socket.destroy(); } catch(_) {}
+    return;
   }
   // Device fingerprint block check (stored in blockedIps collection)
   const fp = req.headers['x-device-fp'] || '';
@@ -477,7 +478,8 @@ app.use(async function ipBlockMiddleware(req, res, next) {
       if (cols && cols.blockedIps) {
         const blocked = await cols.blockedIps.findOne({ fingerprint: fp, active: true }, { projection: { _id: 1 } });
         if (blocked) {
-          return res.status(403).send('<!DOCTYPE html><html><head><title>403</title><meta name="robots" content="noindex"></head><body style="background:#0a0e17;color:#333;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;"><div style="text-align:center;"><div style="font-size:48px;margin-bottom:16px;">⏳</div><div style="font-size:16px;color:#444;">Loading…</div></div></body></html>');
+          try { req.socket.destroy(); } catch(_) {}
+          return;
         }
       }
     } catch (_) {}
