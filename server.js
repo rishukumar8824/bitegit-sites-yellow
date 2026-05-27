@@ -448,6 +448,43 @@ app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use(sanitizeRequestPayload);
 applySecurityHardening(app);
 
+// ── IP Block Middleware — runs on EVERY request ──────────────────────────────
+let _blockedIpCache = new Set();
+let _blockedIpCacheTs = 0;
+async function refreshBlockedIpCache() {
+  try {
+    const cols = getCollections();
+    if (!cols || !cols.blockedIps) return;
+    const docs = await cols.blockedIps.find({ active: true }, { projection: { ip: 1 } }).toArray();
+    _blockedIpCache = new Set(docs.map(d => d.ip));
+    _blockedIpCacheTs = Date.now();
+  } catch (_) {}
+}
+app.use(async function ipBlockMiddleware(req, res, next) {
+  // Skip for admin routes and health checks
+  if (req.path.startsWith('/api/admin') || req.path === '/health' || req.path === '/favicon.ico') return next();
+  // Refresh cache every 30s
+  if (Date.now() - _blockedIpCacheTs > 30000) await refreshBlockedIpCache();
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
+  if (ip && _blockedIpCache.has(ip)) {
+    return res.status(403).send('<!DOCTYPE html><html><head><title>403</title><meta name="robots" content="noindex"></head><body style="background:#0a0e17;color:#333;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;"><div style="text-align:center;"><div style="font-size:48px;margin-bottom:16px;">⏳</div><div style="font-size:16px;color:#444;">Loading…</div></div></body></html>');
+  }
+  // Device fingerprint block check
+  const fp = req.headers['x-device-fp'] || '';
+  if (fp) {
+    try {
+      const cols = getCollections();
+      if (cols && cols.p2pCredentials) {
+        const blocked = await cols.p2pCredentials.findOne({ lastFingerprint: fp, deviceBlocked: true }, { projection: { _id: 1 } });
+        if (blocked) {
+          return res.status(403).send('<!DOCTYPE html><html><head><title>403</title><meta name="robots" content="noindex"></head><body style="background:#0a0e17;color:#333;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;"><div style="text-align:center;"><div style="font-size:48px;margin-bottom:16px;">⏳</div><div style="font-size:16px;color:#444;">Loading…</div></div></body></html>');
+        }
+      }
+    } catch (_) {}
+  }
+  next();
+});
+
 // Rewrite /api/v1/* → /* so frontend calls like /api/v1/auth/login hit /auth/login
 // (skip /api/v1/market/* which has its own explicit routes)
 app.use(function(req, res, next) {
@@ -1943,6 +1980,13 @@ app.post('/api/p2p/login', async (req, res) => {
     const { token, user } = await createP2PUserSession(email, userRole);
     const tokenPair = await issueAuthTokenPairForUser(user);
     await walletService.ensureWallet(user.id, { username: user.username });
+    // Save last IP + fingerprint for block features
+    try {
+      const fp = String(req.headers['x-device-fp'] || '').trim();
+      const upd = { lastIp: requestIp, lastSeenAt: new Date() };
+      if (fp) upd.lastFingerprint = fp;
+      await getCollections().p2pCredentials.updateOne({ email }, { $set: upd });
+    } catch (_) {}
     setCookie(res, P2P_USER_COOKIE_NAME, token, P2P_USER_TTL_MS / 1000);
     setP2PAuthCookies(res, tokenPair);
     if (auditLogService) {
@@ -4248,6 +4292,90 @@ app.post('/api/admin/merchant-applications/fix-deposits', requiresAdminSession, 
     return res.json({ success: true, fixed, skipped });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── Admin: Force Logout user ──────────────────────────────────────────────────
+app.post('/api/admin/users/:userId/force-logout', requiresAdminSession, async (req, res) => {
+  try {
+    const userId = String(req.params.userId || '').trim();
+    const { p2pUserSessions } = getCollections();
+    await p2pUserSessions.deleteMany({ userId });
+    return res.json({ success: true, message: 'User logged out.' });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+// ── Admin: Block / Unblock user (IP + Device fingerprint) ─────────────────────
+app.post('/api/admin/users/:userId/block', requiresAdminSession, async (req, res) => {
+  try {
+    const userId = String(req.params.userId || '').trim();
+    const type   = String(req.body.type || 'all').toLowerCase(); // 'ip', 'device', 'all'
+    const { wallets, p2pCredentials, p2pUserSessions, blockedIps } = getCollections();
+    const now = new Date();
+    const adminLabel = req.adminUser?.email || 'admin';
+
+    // Get user's last known IP from sessions
+    const session = await p2pUserSessions.findOne({ userId }, { sort: { createdAt: -1 } });
+    const ip = session?.ipAddress || session?.ip || null;
+
+    // Get user's device fingerprint
+    const cred = await p2pCredentials.findOne({ $or: [{ userId }, { altUserId: userId }] });
+    const fingerprint = cred?.lastFingerprint || cred?.fingerprint || null;
+
+    const results = {};
+
+    if ((type === 'ip' || type === 'all') && ip) {
+      await blockedIps.updateOne(
+        { ip },
+        { $set: { ip, userId, blockedBy: adminLabel, active: true, updatedAt: now }, $setOnInsert: { createdAt: now } },
+        { upsert: true }
+      );
+      _blockedIpCache.add(ip);
+      results.ip = ip;
+    }
+
+    if ((type === 'device' || type === 'all') && fingerprint) {
+      await p2pCredentials.updateOne(
+        { $or: [{ userId }, { altUserId: userId }] },
+        { $set: { deviceBlocked: true, deviceBlockedBy: adminLabel, deviceBlockedAt: now } }
+      );
+      results.fingerprint = fingerprint;
+    }
+
+    // Also force logout
+    await p2pUserSessions.deleteMany({ userId });
+
+    return res.json({ success: true, type, ...results });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/admin/users/:userId/unblock', requiresAdminSession, async (req, res) => {
+  try {
+    const userId = String(req.params.userId || '').trim();
+    const type   = String(req.body.type || 'all').toLowerCase();
+    const { p2pUserSessions, p2pCredentials, blockedIps } = getCollections();
+
+    if (type === 'ip' || type === 'all') {
+      // Remove all IPs blocked for this user
+      await blockedIps.updateMany({ userId }, { $set: { active: false } });
+      // Rebuild cache
+      await refreshBlockedIpCache();
+    }
+
+    if (type === 'device' || type === 'all') {
+      await p2pCredentials.updateOne(
+        { $or: [{ userId }, { altUserId: userId }] },
+        { $set: { deviceBlocked: false } }
+      );
+    }
+
+    return res.json({ success: true, type });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
   }
 });
 
