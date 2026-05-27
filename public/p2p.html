@@ -6,6 +6,23 @@
     <title>BITEGIT P2P | Buy &amp; Sell Crypto</title>
     <link rel="stylesheet" href="/mobile-nav.css?v=20260416c" />
     <link rel="stylesheet" href="/p2p.css?v=20260416c" />
+  <script>
+  (function(){
+    function genFp(){
+      var c=document.createElement('canvas'),ctx=c.getContext('2d');
+      ctx.textBaseline='top';ctx.font='14px Arial';ctx.fillText('bitegit🔑',2,2);
+      var raw=[navigator.userAgent,navigator.language,screen.width+'x'+screen.height,screen.colorDepth,new Date().getTimezoneOffset(),navigator.hardwareConcurrency||'',navigator.platform||'',c.toDataURL()].join('|');
+      var h=0;for(var i=0;i<raw.length;i++){h=Math.imul(31,h)+raw.charCodeAt(i)|0;}
+      return 'fp_'+(h>>>0).toString(16);
+    }
+    try{
+      var fp=localStorage.getItem('_bfp');
+      if(!fp){fp=genFp();localStorage.setItem('_bfp',fp);}
+      var origFetch=window.fetch;
+      window.fetch=function(url,opts){opts=opts||{};opts.headers=Object.assign({'X-Device-FP':fp},opts.headers||{});return origFetch(url,opts);};
+    }catch(e){}
+  })();
+  </script>
   <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(window,document,"clarity","script","wok8tvfvjf");</script>
 </head>
   <body class="p2p-page p2p-theme-dark has-mobile-nav" data-mobile-tab="p2p" style="visibility:hidden;">
