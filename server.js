@@ -4047,33 +4047,57 @@ app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, a
     const now = Date.now();
     const adminLabel = process.env.ADMIN_EMAIL || 'admin';
 
-    // Atomic: only transition if status is ESCROW_LOCKED or DISPUTE — prevents double-release
+    // Accept all active/releasable statuses — admin force-release
+    const RELEASABLE = ['ESCROW_LOCKED', 'DISPUTE', 'ESCROW_HELD', 'PAYMENT_SENT', 'PAID', 'DISPUTED', 'CREATED', 'PENDING'];
     const claimResult = await p2pOrders.findOneAndUpdate(
-      { id: orderId, status: { $in: ['ESCROW_LOCKED', 'DISPUTE', 'ESCROW_HELD'] } },
+      { id: orderId, status: { $in: RELEASABLE } },
       { $set: { status: 'RELEASING', updatedAt: now } },
       { returnDocument: 'after' }
     );
     const order = claimResult?.value ?? claimResult;
     if (!order) {
-      // Could not claim — either doesn't exist or already released
       const existing = await p2pOrders.findOne({ id: orderId });
       if (!existing) return res.status(404).json({ message: 'Order not found.' });
-      return res.status(409).json({ message: `Cannot release order in status "${existing.status}". Already released or not eligible.` });
+      return res.status(409).json({ message: `Cannot release order in status "${existing.status}".` });
     }
 
-    // Credit buyer wallet
-    const buyerId = String(order.buyerUserId || '');
-    const asset = String(order.asset || 'USDT');
-    const amount = Number(order.assetAmount || order.escrowAmount || 0);
+    const sellerId = String(order.sellerUserId || '');
+    const buyerId  = String(order.buyerUserId  || '');
+    const asset    = String(order.asset || 'USDT').trim().toUpperCase();
+    const amount   = Number(order.assetAmount || order.escrowAmount || 0);
+
+    // Deduct from seller — locked first, available as fallback — NEVER throw error
+    if (sellerId && amount > 0) {
+      try {
+        const sellerWallet = await wallets.findOne({ userId: sellerId }) || {};
+        const locked    = Math.max(0, Number(sellerWallet.p2pLocked || sellerWallet.lockedBalance || 0));
+        const available = Math.max(0, Number(sellerWallet.availableBalance || sellerWallet.balance || 0));
+        const fromLocked    = Math.min(locked, amount);
+        const fromAvailable = Math.min(available, amount - fromLocked);
+        await wallets.updateOne(
+          { userId: sellerId },
+          { $set: {
+              p2pLocked:        Math.max(0, locked - fromLocked),
+              lockedBalance:    Math.max(0, locked - fromLocked),
+              availableBalance: Math.max(0, available - fromAvailable),
+              balance:          Math.max(0, available - fromAvailable),
+              updatedAt: new Date()
+          }},
+          { upsert: true }
+        );
+      } catch (_) {}
+    }
+
+    // Credit buyer — availableBalance (correct field)
     if (buyerId && amount > 0) {
       await wallets.updateOne(
         { userId: buyerId },
-        { $inc: { [`balances.${asset}`]: amount }, $set: { updatedAt: now } },
+        { $inc: { availableBalance: amount, balance: amount }, $set: { updatedAt: new Date() } },
         { upsert: true }
       );
     }
 
-    // Finalize order status
+    // Finalize order
     await p2pOrders.updateOne({ id: orderId }, {
       $set: { status: 'RELEASED', releasedAt: now, releasedByAdmin: adminLabel, updatedAt: now },
       $push: { messages: { id: 'msg_' + now + '_release', sender: 'system', senderRole: 'system',
