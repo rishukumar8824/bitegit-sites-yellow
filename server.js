@@ -2548,8 +2548,6 @@ app.get('/api/p2p/wallet', requiresP2PUser, async (req, res) => {
     return res.json({
       wallet: {
         ...ensured,
-        lockedBalance:    0,   // hidden from user
-        p2pLocked:        0,   // hidden from user
         securityDeposit,
         depositAddress: depositConfig.depositAddress,
         depositNetwork: depositConfig.activeNetwork?.network || depositConfig.defaultNetwork,
@@ -2600,15 +2598,20 @@ app.get('/api/wallet/summary', requiresP2PUser, async (req, res) => {
       console.error('[wallet/summary] pendingWithdrawalSum query failed:', err.message);
     }
 
+    const lockedTotal  = Number(wallet.lockedBalance || wallet.p2pLocked || 0);
+    // funding = only true P2P escrow, NOT pending withdrawals
+    const fundingOnly  = Math.max(0, lockedTotal - pendingWithdrawalSum);
     const availBal     = Number(wallet.availableBalance || wallet.balance || 0);
+    // total shown to user = available + p2p-escrow only (pending withdrawals are "gone")
+    const totalForUser = availBal + fundingOnly;
 
     return res.json({
       summary: {
-        total_balance:     availBal,
+        total_balance:     totalForUser,
         available_balance: availBal,
-        locked_balance:    0,        // hidden from user
+        locked_balance:    fundingOnly,
         spot_balance:      availBal,
-        funding_balance:   0,        // hidden from user
+        funding_balance:   fundingOnly,
         pending_withdrawals: pendingWithdrawalSum,
         asset_balances:    assetBalances,
         deposit_address:   depositConfig.depositAddress,
@@ -4044,67 +4047,33 @@ app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, a
     const now = Date.now();
     const adminLabel = process.env.ADMIN_EMAIL || 'admin';
 
-    // Accept ALL active/releasable statuses — admin can force-release any non-terminal order
-    const RELEASABLE = ['ESCROW_LOCKED', 'DISPUTE', 'ESCROW_HELD', 'PAYMENT_SENT', 'PAID', 'DISPUTED', 'CREATED', 'PENDING'];
+    // Atomic: only transition if status is ESCROW_LOCKED or DISPUTE — prevents double-release
     const claimResult = await p2pOrders.findOneAndUpdate(
-      { id: orderId, status: { $in: RELEASABLE } },
+      { id: orderId, status: { $in: ['ESCROW_LOCKED', 'DISPUTE', 'ESCROW_HELD'] } },
       { $set: { status: 'RELEASING', updatedAt: now } },
       { returnDocument: 'after' }
     );
     const order = claimResult?.value ?? claimResult;
     if (!order) {
+      // Could not claim — either doesn't exist or already released
       const existing = await p2pOrders.findOne({ id: orderId });
       if (!existing) return res.status(404).json({ message: 'Order not found.' });
       return res.status(409).json({ message: `Cannot release order in status "${existing.status}". Already released or not eligible.` });
     }
 
-    const sellerId = String(order.sellerUserId || '');
-    const buyerId  = String(order.buyerUserId  || '');
-    const asset    = String(order.asset || 'USDT').trim().toUpperCase();
-    const amount   = Number(order.assetAmount || order.escrowAmount || 0);
-
-    // ── Deduct from seller (locked first, then available as fallback) ──────────
-    if (sellerId && amount > 0) {
-      const sellerWallet = await wallets.findOne({ userId: sellerId }) || {};
-      const sellerLocked    = Number(sellerWallet.p2pLocked    || sellerWallet.lockedBalance    || 0);
-      const sellerAvailable = Number(sellerWallet.availableBalance || sellerWallet.balance || 0);
-
-      // How much we can take from locked vs available
-      const fromLocked    = Math.min(sellerLocked, amount);
-      const stillNeeded   = amount - fromLocked;
-      const fromAvailable = Math.min(sellerAvailable, stillNeeded);
-
-      const newLocked    = Math.max(0, sellerLocked    - fromLocked);
-      const newAvailable = Math.max(0, sellerAvailable - fromAvailable);
-
-      await wallets.updateOne(
-        { userId: sellerId },
-        {
-          $set: {
-            p2pLocked:        newLocked,
-            lockedBalance:    newLocked,
-            availableBalance: newAvailable,
-            balance:          newAvailable,
-            updatedAt:        new Date()
-          }
-        },
-        { upsert: true }
-      );
-    }
-
-    // ── Credit buyer (available balance) ──────────────────────────────────────
+    // Credit buyer wallet
+    const buyerId = String(order.buyerUserId || '');
+    const asset = String(order.asset || 'USDT');
+    const amount = Number(order.assetAmount || order.escrowAmount || 0);
     if (buyerId && amount > 0) {
       await wallets.updateOne(
         { userId: buyerId },
-        {
-          $inc: { availableBalance: amount, balance: amount },
-          $set: { updatedAt: new Date() }
-        },
+        { $inc: { [`balances.${asset}`]: amount }, $set: { updatedAt: now } },
         { upsert: true }
       );
     }
 
-    // ── Finalize order ────────────────────────────────────────────────────────
+    // Finalize order status
     await p2pOrders.updateOne({ id: orderId }, {
       $set: { status: 'RELEASED', releasedAt: now, releasedByAdmin: adminLabel, updatedAt: now },
       $push: { messages: { id: 'msg_' + now + '_release', sender: 'system', senderRole: 'system',
@@ -5589,12 +5558,7 @@ app.post('/api/support/ticket/:ticketId/heartbeat', async (req, res) => {
 app.post('/api/support/ticket/:ticketId/typing', (req, res) => {
   try {
     const { ticketId } = req.params;
-    if (ticketId) {
-      const tid = String(ticketId).trim();
-      _supportTypingState.set(tid, Date.now());
-      // Instantly push typing event to admin via SSE
-      broadcastAdminSupportEvent({ type: 'user_typing', ticketId: tid });
-    }
+    if (ticketId) _supportTypingState.set(String(ticketId).trim(), Date.now());
   } catch (_) {}
   return res.json({ ok: true });
 });
