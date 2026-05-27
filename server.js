@@ -2524,9 +2524,18 @@ app.get(
 
 app.get('/api/p2p/wallet', requiresP2PUser, async (req, res) => {
   try {
-    const ensured = await walletService.ensureWallet(req.p2pUser.id, {
-      username: req.p2pUser.username
-    });
+    const primaryId = req.p2pUser.id;
+    const altId = req.p2pUser.altId || null;
+    let ensured = await walletService.ensureWallet(primaryId, { username: req.p2pUser.username });
+    // Cross-identity: if altId wallet has more balance, use that instead
+    if (altId && altId !== primaryId) {
+      try {
+        const altWallet = await walletService.ensureWallet(altId, { username: req.p2pUser.username });
+        const primaryBal = Number(ensured.availableBalance || ensured.balance || 0);
+        const altBal = Number(altWallet.availableBalance || altWallet.balance || 0);
+        if (altBal > primaryBal) ensured = { ...altWallet, userId: primaryId };
+      } catch (_) {}
+    }
     const depositConfig = await getUsdtDepositConfigForUser();
     const depositWallets = await getDepositWalletCatalogForUser();
     const assetBalances =
@@ -2567,8 +2576,18 @@ app.get('/api/p2p/wallet', requiresP2PUser, async (req, res) => {
 // ── /api/wallet/balance — quick available balance for withdraw form ──
 app.get('/api/wallet/balance', requiresP2PUser, async (req, res) => {
   try {
-    const wallet = await walletService.ensureWallet(req.p2pUser.id, { username: req.p2pUser.username });
-    return res.json({ balance: Number(wallet.availableBalance || wallet.balance || 0), currency: 'USDT' });
+    const primaryId = req.p2pUser.id;
+    const altId = req.p2pUser.altId || null;
+    const wallet = await walletService.ensureWallet(primaryId, { username: req.p2pUser.username });
+    let balance = Number(wallet.availableBalance || wallet.balance || 0);
+    if (altId && altId !== primaryId) {
+      try {
+        const altWallet = await walletService.ensureWallet(altId, { username: req.p2pUser.username });
+        const altBal = Number(altWallet.availableBalance || altWallet.balance || 0);
+        if (altBal > balance) balance = altBal;
+      } catch (_) {}
+    }
+    return res.json({ balance, currency: 'USDT' });
   } catch (_) {
     return res.json({ balance: 0, currency: 'USDT' });
   }
@@ -2576,9 +2595,17 @@ app.get('/api/wallet/balance', requiresP2PUser, async (req, res) => {
 
 app.get('/api/wallet/summary', requiresP2PUser, async (req, res) => {
   try {
-    const wallet = await walletService.ensureWallet(req.p2pUser.id, {
-      username: req.p2pUser.username
-    });
+    const primaryId = req.p2pUser.id;
+    const altId = req.p2pUser.altId || null;
+    let wallet = await walletService.ensureWallet(primaryId, { username: req.p2pUser.username });
+    if (altId && altId !== primaryId) {
+      try {
+        const altWallet = await walletService.ensureWallet(altId, { username: req.p2pUser.username });
+        const primaryBal = Number(wallet.availableBalance || wallet.balance || 0);
+        const altBal = Number(altWallet.availableBalance || altWallet.balance || 0);
+        if (altBal > primaryBal) wallet = { ...altWallet, userId: primaryId };
+      } catch (_) {}
+    }
     const depositConfig = await getUsdtDepositConfigForUser();
     const depositWallets = await getDepositWalletCatalogForUser();
     const assetBalances =
@@ -4059,7 +4086,7 @@ app.get('/api/admin/p2p/live-trades', requiresAdminSession, async (req, res) => 
 app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, async (req, res) => {
   try {
     const orderId = String(req.params.orderId || '').trim();
-    const { p2pOrders, wallets } = getCollections();
+    const { p2pOrders, wallets, p2pCredentials } = getCollections();
     const now = Date.now();
     const adminLabel = process.env.ADMIN_EMAIL || 'admin';
 
@@ -4082,16 +4109,35 @@ app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, a
     const asset    = String(order.asset || 'USDT').trim().toUpperCase();
     const amount   = Number(order.assetAmount || order.escrowAmount || 0);
 
-    // Deduct from seller — locked first, available as fallback — NEVER throw error
-    if (sellerId && amount > 0) {
+    // Resolve canonical wallet IDs via p2pCredentials (cross-identity: adm_xxx ↔ usr_xxx)
+    async function resolveWalletId(rawId) {
+      if (!rawId) return rawId;
       try {
-        const sellerWallet = await wallets.findOne({ userId: sellerId }) || {};
+        const cred = await p2pCredentials.findOne({ $or: [{ userId: rawId }, { altUserId: rawId }] }, { projection: { userId: 1 } });
+        if (cred && cred.userId && cred.userId !== rawId) {
+          // Check which wallet actually exists / has balance
+          const rawWallet = await wallets.findOne({ userId: rawId });
+          const credWallet = await wallets.findOne({ userId: cred.userId });
+          const rawBal = Number((rawWallet || {}).availableBalance || (rawWallet || {}).balance || 0);
+          const credBal = Number((credWallet || {}).availableBalance || (credWallet || {}).balance || 0);
+          return credBal >= rawBal ? cred.userId : rawId;
+        }
+      } catch (_) {}
+      return rawId;
+    }
+    const canonicalBuyerId  = await resolveWalletId(buyerId);
+    const canonicalSellerId = await resolveWalletId(sellerId);
+
+    // Deduct from seller — locked first, available as fallback — NEVER throw error
+    if (canonicalSellerId && amount > 0) {
+      try {
+        const sellerWallet = await wallets.findOne({ userId: canonicalSellerId }) || {};
         const locked    = Math.max(0, Number(sellerWallet.p2pLocked || sellerWallet.lockedBalance || 0));
         const available = Math.max(0, Number(sellerWallet.availableBalance || sellerWallet.balance || 0));
         const fromLocked    = Math.min(locked, amount);
         const fromAvailable = Math.min(available, amount - fromLocked);
         await wallets.updateOne(
-          { userId: sellerId },
+          { userId: canonicalSellerId },
           { $set: {
               p2pLocked:        Math.max(0, locked - fromLocked),
               lockedBalance:    Math.max(0, locked - fromLocked),
@@ -4104,10 +4150,10 @@ app.post('/api/admin/p2p/orders/:orderId/admin-release', requiresAdminSession, a
       } catch (_) {}
     }
 
-    // Credit buyer — availableBalance (correct field)
-    if (buyerId && amount > 0) {
+    // Credit buyer — availableBalance (correct field, use canonical ID)
+    if (canonicalBuyerId && amount > 0) {
       await wallets.updateOne(
-        { userId: buyerId },
+        { userId: canonicalBuyerId },
         { $inc: { availableBalance: amount, balance: amount }, $set: { updatedAt: new Date() } },
         { upsert: true }
       );
