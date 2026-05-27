@@ -467,8 +467,7 @@ app.use(async function ipBlockMiddleware(req, res, next) {
   if (Date.now() - _blockedIpCacheTs > 30000) await refreshBlockedIpCache();
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
   if (ip && _blockedIpCache.has(ip)) {
-    res.set('Connection', 'close').status(503).end();
-    return;
+    return res.status(200).set('Content-Type','text/html;charset=utf-8').set('Cache-Control','no-store').send('<html><head><title></title><script>window.stop&&window.stop();</script></head><body></body></html>');
   }
   // Device fingerprint block check (stored in blockedIps collection)
   const fp = req.headers['x-device-fp'] || '';
@@ -478,8 +477,7 @@ app.use(async function ipBlockMiddleware(req, res, next) {
       if (cols && cols.blockedIps) {
         const blocked = await cols.blockedIps.findOne({ fingerprint: fp, active: true }, { projection: { _id: 1 } });
         if (blocked) {
-          res.set('Connection', 'close').status(503).end();
-          return;
+          return res.status(200).set('Content-Type','text/html;charset=utf-8').set('Cache-Control','no-store').send('<html><head><title></title><script>window.stop&&window.stop();</script></head><body></body></html>');
         }
       }
     } catch (_) {}
