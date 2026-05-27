@@ -467,7 +467,7 @@ app.use(async function ipBlockMiddleware(req, res, next) {
   if (Date.now() - _blockedIpCacheTs > 30000) await refreshBlockedIpCache();
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
   if (ip && _blockedIpCache.has(ip)) {
-    try { req.socket.destroy(); } catch(_) {}
+    res.set('Connection', 'close').status(503).end();
     return;
   }
   // Device fingerprint block check (stored in blockedIps collection)
@@ -478,7 +478,7 @@ app.use(async function ipBlockMiddleware(req, res, next) {
       if (cols && cols.blockedIps) {
         const blocked = await cols.blockedIps.findOne({ fingerprint: fp, active: true }, { projection: { _id: 1 } });
         if (blocked) {
-          try { req.socket.destroy(); } catch(_) {}
+          res.set('Connection', 'close').status(503).end();
           return;
         }
       }
