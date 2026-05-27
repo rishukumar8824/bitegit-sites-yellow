@@ -2593,7 +2593,7 @@ async function handleP2PActions(event) {
     }
 
     if (action === 'release-order') {
-      await apiRequest(`/p2p/orders/${encodeURIComponent(orderId)}/release`, {
+      await apiRequest(`/p2p/orders/${encodeURIComponent(orderId)}/admin-release`, {
         method: 'POST',
         body: JSON.stringify({})
       });
