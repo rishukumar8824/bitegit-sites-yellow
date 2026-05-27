@@ -465,7 +465,8 @@ app.use(async function ipBlockMiddleware(req, res, next) {
   if (req.path.startsWith('/api/admin') || req.path === '/health' || req.path === '/favicon.ico') return next();
   // Refresh cache every 30s
   if (Date.now() - _blockedIpCacheTs > 30000) await refreshBlockedIpCache();
-  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
+  // SECURITY: Use req.ip (Express trust proxy handles x-forwarded-for safely — prevents spoofing)
+  const ip = req.ip || req.socket?.remoteAddress || '';
   if (ip && _blockedIpCache.has(ip)) {
     return res.status(200).set('Content-Type','text/html;charset=utf-8').set('Cache-Control','no-store').send('<html><head><title></title><script>window.stop&&window.stop();</script></head><body></body></html>');
   }
@@ -1123,7 +1124,8 @@ function normalizeSignupContact(input) {
 }
 
 function createOtpCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  // SECURITY: crypto.randomInt is cryptographically secure (Math.random is not)
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 async function trySendSignupEmailOtp(email, code) {
@@ -1229,9 +1231,8 @@ function createIpAttemptLimiter({ maxAttempts, windowMs }) {
 }
 
 function getRequestIp(req) {
-  const forwardedRaw = String(req.headers['x-forwarded-for'] || '').trim();
-  const firstForwarded = forwardedRaw.split(',')[0].trim();
-  return firstForwarded || String(req.ip || req.connection?.remoteAddress || 'unknown');
+  // SECURITY: req.ip is set by Express based on trust proxy config (safe from header spoofing)
+  return String(req.ip || req.connection?.remoteAddress || 'unknown');
 }
 
 // In-memory geo cache: avoid hammering ip-api.com for same IP
@@ -1677,7 +1678,7 @@ async function requiresP2PUser(req, res, next) {
 
     // Save lastIp + fingerprint on every request (needed for block feature)
     try {
-      const reqIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
+      const reqIp = req.ip || req.socket?.remoteAddress || '';
       const fp = String(req.headers['x-device-fp'] || '').trim();
       const cols = getCollections();
       if (cols && cols.p2pCredentials && (reqIp || fp)) {
@@ -2182,7 +2183,7 @@ app.post('/api/p2p/forgot-password', async (req, res) => {
     const credential = await repos.getP2PCredential(email);
     // Always return success to avoid email enumeration
     if (credential && authEmailService) {
-      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const code = String(crypto.randomInt(100000, 1000000));
       await repos.upsertSignupOtp(email, { code, type: 'email', attempts: 0, expiresAt: new Date(Date.now() + 10 * 60 * 1000), payload: {} }, { purpose: 'p2p_password_reset' });
       await authEmailService.sendForgotPasswordOtpEmail(email, code, { expiresInMinutes: 10 }).catch(() => {});
     }
@@ -2911,7 +2912,8 @@ app.post(
     const network = normalizeUsdtNetwork(requestedNetwork || 'TRC20');
     const requestIp = getRequestIp(req);
     const networkFeeMap = { TRC20: 1, BEP20: 1, ERC20: 5, MORPH: 1 };
-    const fee = req.body.fee != null ? Number(req.body.fee) : (networkFeeMap[network] || 1);
+    // SECURITY: Fee is always server-determined — never trust client-supplied fee
+    const fee = networkFeeMap[network] || 1;
 
     if (currency === 'USDT' && !isValidAddressForNetwork(address, network)) {
       return res.status(400).json({
