@@ -96,7 +96,7 @@
     .dep-hist-left .dep-hist-time{font-size:.78rem;color:#8a9bb5;margin-top:.15rem}
     .dep-hist-right{text-align:right}
     .dep-hist-amount{font-size:.95rem;font-weight:700;color:#fff}
-    .dep-hist-status{font-size:.78rem;color:#4caf50;margin-top:.15rem;display:flex;align-items:center;gap:.25rem;justify-content:flex-end}
+    .dep-hist-status{font-size:.78rem;color:#f5a623;margin-top:.15rem;display:flex;align-items:center;gap:.25rem;justify-content:flex-end}
     .dep-hist-status::before{content:"•";font-size:.9rem}
     /* ── MODALS ── */
     .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:flex-end}
@@ -1238,7 +1238,7 @@
         .then(function(r) { return r.json(); })
         .then(function(d) {
           var deps = (d.deposits || []).map(function(dep) {
-            return { amount: dep.amount || dep.usdtAmount || 0, created_at: dep.createdAt || dep.submittedAt || new Date().toISOString(), wallet: { currency: { symbol: dep.coin || 'USDT' } }, status: dep.status || 'completed' };
+            return { amount: dep.amount || dep.usdtAmount || 0, created_at: dep.createdAt || dep.submittedAt || new Date().toISOString(), wallet: { currency: { symbol: dep.coin || 'USDT' } }, status: dep.status || 'PENDING' };
           });
           return _fakeRes({ status: 'success', data: { deposits: { data: deps } } });
         })
@@ -1747,7 +1747,10 @@
         empty.classList.add('hidden');
         list.forEach(function(d) {
           var coin = (d.wallet && d.wallet.currency) ? d.wallet.currency.symbol : 'USDT';
-          el.appendChild(buildRecRow('+', d.amount, coin, fmtDate(d.created_at||d.date), '#0ecb81', 'Successful'));
+          var dStatus = String(d.status || 'PENDING').toUpperCase();
+          var dColor = (dStatus === 'APPROVED' || dStatus === 'COMPLETED') ? '#0ecb81' : (dStatus === 'REJECTED') ? '#f6465d' : '#f5a623';
+          var dLabel = (dStatus === 'APPROVED' || dStatus === 'COMPLETED') ? 'Successful' : (dStatus === 'REJECTED') ? 'Rejected' : 'Pending';
+          el.appendChild(buildRecRow('+', d.amount, coin, fmtDate(d.created_at||d.date), dColor, dLabel));
         });
       }).catch(function(){});
   }
@@ -2036,7 +2039,10 @@
           var dt = new Date(d.created_at || d.date || Date.now());
           var dateStr = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')+' '+String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
           var coin = (d.wallet && d.wallet.currency) ? d.wallet.currency.symbol : 'USDT';
-          row.innerHTML = '<div class="dep-hist-left"><div class="dep-hist-coin-name">'+coin+'</div><div class="dep-hist-time">'+dateStr+'</div></div><div class="dep-hist-right"><div class="dep-hist-amount">+'+(d.amount||0)+'</div><div class="dep-hist-status">Successful</div></div>';
+          var dSt = String(d.status || 'PENDING').toUpperCase();
+          var dStColor = (dSt === 'APPROVED' || dSt === 'COMPLETED') ? '#0ecb81' : (dSt === 'REJECTED') ? '#f6465d' : '#f5a623';
+          var dStLabel = (dSt === 'APPROVED' || dSt === 'COMPLETED') ? 'Successful' : (dSt === 'REJECTED') ? 'Rejected' : 'Pending';
+          row.innerHTML = '<div class="dep-hist-left"><div class="dep-hist-coin-name">'+coin+'</div><div class="dep-hist-time">'+dateStr+'</div></div><div class="dep-hist-right"><div class="dep-hist-amount">+'+(d.amount||0)+'</div><div class="dep-hist-status" style="color:'+dStColor+'">'+dStLabel+'</div></div>';
           el.appendChild(row);
         });
       })
