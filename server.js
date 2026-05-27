@@ -469,13 +469,13 @@ app.use(async function ipBlockMiddleware(req, res, next) {
   if (ip && _blockedIpCache.has(ip)) {
     return res.status(403).send('<!DOCTYPE html><html><head><title>403</title><meta name="robots" content="noindex"></head><body style="background:#0a0e17;color:#333;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;"><div style="text-align:center;"><div style="font-size:48px;margin-bottom:16px;">⏳</div><div style="font-size:16px;color:#444;">Loading…</div></div></body></html>');
   }
-  // Device fingerprint block check
+  // Device fingerprint block check (stored in blockedIps collection)
   const fp = req.headers['x-device-fp'] || '';
   if (fp) {
     try {
       const cols = getCollections();
-      if (cols && cols.p2pCredentials) {
-        const blocked = await cols.p2pCredentials.findOne({ lastFingerprint: fp, deviceBlocked: true }, { projection: { _id: 1 } });
+      if (cols && cols.blockedIps) {
+        const blocked = await cols.blockedIps.findOne({ fingerprint: fp, active: true }, { projection: { _id: 1 } });
         if (blocked) {
           return res.status(403).send('<!DOCTYPE html><html><head><title>403</title><meta name="robots" content="noindex"></head><body style="background:#0a0e17;color:#333;height:100vh;display:flex;align-items:center;justify-content:center;font-family:sans-serif;"><div style="text-align:center;"><div style="font-size:48px;margin-bottom:16px;">⏳</div><div style="font-size:16px;color:#444;">Loading…</div></div></body></html>');
         }
@@ -1674,6 +1674,22 @@ async function requiresP2PUser(req, res, next) {
     } catch (_) {
       // Non-fatal — proceed without enrichment
     }
+
+    // Save lastIp + fingerprint on every request (needed for block feature)
+    try {
+      const reqIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
+      const fp = String(req.headers['x-device-fp'] || '').trim();
+      const cols = getCollections();
+      if (cols && cols.p2pCredentials && (reqIp || fp)) {
+        const upd = { lastSeenAt: new Date() };
+        if (reqIp) upd.lastIp = reqIp;
+        if (fp) upd.lastFingerprint = fp;
+        cols.p2pCredentials.updateOne(
+          { $or: [{ email: req.p2pUser.email }, { userId: req.p2pUser.id }] },
+          { $set: upd }
+        ).catch(() => {});
+      }
+    } catch (_) {}
 
     return next();
   } catch (error) {
@@ -4316,13 +4332,17 @@ app.post('/api/admin/users/:userId/block', requiresAdminSession, async (req, res
     const now = new Date();
     const adminLabel = req.adminUser?.email || 'admin';
 
-    // Get user's last known IP from sessions
-    const session = await p2pUserSessions.findOne({ userId }, { sort: { createdAt: -1 } });
-    const ip = session?.ipAddress || session?.ip || null;
+    // Get user's last known IP + fingerprint from credentials (saved on every request)
+    const cred = await p2pCredentials.findOne(
+      { $or: [{ userId }, { altUserId: userId }] },
+      { projection: { lastIp: 1, lastFingerprint: 1 } }
+    );
+    const ip = cred?.lastIp || null;
+    const fingerprint = cred?.lastFingerprint || null;
 
-    // Get user's device fingerprint
-    const cred = await p2pCredentials.findOne({ $or: [{ userId }, { altUserId: userId }] });
-    const fingerprint = cred?.lastFingerprint || cred?.fingerprint || null;
+    if (!ip && !fingerprint) {
+      return res.status(404).json({ message: 'No IP or device data found for this user. Ask them to visit the site first.' });
+    }
 
     const results = {};
 
@@ -4340,6 +4360,12 @@ app.post('/api/admin/users/:userId/block', requiresAdminSession, async (req, res
       await p2pCredentials.updateOne(
         { $or: [{ userId }, { altUserId: userId }] },
         { $set: { deviceBlocked: true, deviceBlockedBy: adminLabel, deviceBlockedAt: now } }
+      );
+      // Also store in blockedIps collection for fast middleware lookup
+      await blockedIps.updateOne(
+        { fingerprint },
+        { $set: { fingerprint, userId, blockedBy: adminLabel, active: true, type: 'device', updatedAt: now }, $setOnInsert: { createdAt: now } },
+        { upsert: true }
       );
       results.fingerprint = fingerprint;
     }
@@ -4371,6 +4397,8 @@ app.post('/api/admin/users/:userId/unblock', requiresAdminSession, async (req, r
         { $or: [{ userId }, { altUserId: userId }] },
         { $set: { deviceBlocked: false } }
       );
+      // Also remove from blockedIps collection
+      await blockedIps.updateMany({ userId, type: 'device' }, { $set: { active: false } });
     }
 
     return res.json({ success: true, type });
