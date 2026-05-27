@@ -1063,6 +1063,41 @@
         </div>
 
         <div style="border-top:1px solid var(--border);padding-top:14px;">
+          <div style="font-size:11px;color:var(--text-2);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">🛡️ Block / Unblock User</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <button class="btn-danger" onclick="upAction('block-ip')" style="padding:10px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:5px;">
+                🌐 Block IP
+              </button>
+              <button class="btn-secondary" onclick="upAction('unblock-ip')" style="padding:10px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:5px;">
+                ✅ Unblock IP
+              </button>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <button class="btn-danger" onclick="upAction('block-device')" style="padding:10px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:5px;">
+                📱 Block Device
+              </button>
+              <button class="btn-secondary" onclick="upAction('unblock-device')" style="padding:10px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:5px;">
+                ✅ Unblock Device
+              </button>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <button class="btn-danger" onclick="upAction('block-all')" style="padding:10px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:5px;background:rgba(220,38,38,0.3);border-color:rgba(220,38,38,0.6);">
+                🔴 Block All (IP+Device)
+              </button>
+              <button class="btn-secondary" onclick="upAction('unblock-all')" style="padding:10px;font-size:12px;display:flex;align-items:center;justify-content:center;gap:5px;">
+                🟢 Unblock All
+              </button>
+            </div>
+
+            <div id="upBlockStatus" style="font-size:11px;color:var(--text-2);text-align:center;min-height:16px;margin-top:2px;"></div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:14px;">
           <div style="font-size:11px;color:var(--text-2);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Admin Impersonation</div>
           <button onclick="upAction('login-as')" style="padding:11px;gap:8px;display:flex;align-items:center;justify-content:center;width:100%;background:#1565c0;border:1px solid #1e88e5;color:#fff;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.15s;">
             👤 Login as this User
