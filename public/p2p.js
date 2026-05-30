@@ -3802,7 +3802,7 @@ async function loadLiveOrders() {
 
     const response = await fetch('/api/p2p/orders/my-active', {
       credentials: 'include',
-      headers: { 'Cache-Control': 'no-store' }
+      headers: Object.assign({ 'Cache-Control': 'no-store' }, buildP2PAuthHeaders())
     });
     const data = await response.json();
 
@@ -4639,7 +4639,7 @@ async function loadMobileActiveOrdersDirect() {
   // Directly fetches current user's active orders (bypasses the 20-order live feed limit)
   if (!currentUser) return;
   try {
-    var resp = await fetch('/api/p2p/orders/my-active', { credentials: 'include', headers: { 'Cache-Control': 'no-store' } });
+    var resp = await fetch('/api/p2p/orders/my-active', { credentials: 'include', headers: Object.assign({ 'Cache-Control': 'no-store' }, buildP2PAuthHeaders()) });
     if (!resp.ok) return;
     var data = await resp.json();
     var orders = Array.isArray(data) ? data : (data.orders || []);
@@ -5441,7 +5441,7 @@ function fetchOrdersSafe() {
   _ordRefreshQueued = false;
   var myReqId  = ++_ordReqId;
 
-  var fetchOpts = { credentials: 'include', headers: { 'Cache-Control': 'no-store' } };
+  var fetchOpts = { credentials: 'include', headers: Object.assign({ 'Cache-Control': 'no-store' }, buildP2PAuthHeaders()) };
   if (ctrl) fetchOpts.signal = ctrl.signal;
 
   _ordFetchMyActive(fetchOpts, myReqId)
