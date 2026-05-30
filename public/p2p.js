@@ -509,7 +509,15 @@ function syncP2PHintCache() {
 
 function getStoredP2PAccessToken() {
   try {
-    return String(localStorage.getItem('bitegit_token') || '').trim();
+    var tok = String(localStorage.getItem('bitegit_token') || '').trim();
+    // Never use admin JWT (adm_ prefix) for P2P requests — causes session conflict
+    if (tok && tok.length > 10) {
+      try {
+        var payload = JSON.parse(atob(tok.split('.')[1]));
+        if (String(payload.sub || payload.id || '').startsWith('adm_')) return '';
+      } catch(_) {}
+    }
+    return tok;
   } catch (_) {
     return '';
   }
@@ -5303,7 +5311,7 @@ function _ordFetchActiveOrdersFallback(fetchOpts, parentReqId) {
 
 function _ordFetchMyActive(fetchOpts, parentReqId) {
   console.log('[orders] fetching my-active uid=' + getCurrentUserId());
-  return _ordFetchWithTimeout('/api/p2p/orders/my-active', fetchOpts, 8000)
+  return _ordFetchWithTimeout('/api/p2p/orders/my-active', fetchOpts, 15000)
     .then(function(response) {
       if (parentReqId !== _ordReqId) return null;
       if (!response) { console.warn('[orders] my-active: no response'); return null; }
