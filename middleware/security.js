@@ -141,7 +141,9 @@ function applySecurityHeaders(app) {
                 'https://cdn.tailwindcss.com',
                 'https://cdn.jsdelivr.net',
                 'https://s3.tradingview.com',
-                'https://*.tradingview.com'
+                'https://*.tradingview.com',
+                'https://www.clarity.ms',
+                'https://*.clarity.ms'
               ],
               styleSrc: [
                 "'self'",
@@ -149,18 +151,24 @@ function applySecurityHeaders(app) {
                 'https://cdn.tailwindcss.com',
                 'https://cdn.jsdelivr.net',
                 'https://s3.tradingview.com',
-                'https://*.tradingview.com'
+                'https://*.tradingview.com',
+                'https://fonts.googleapis.com'
               ],
               imgSrc: ["'self'", 'data:', 'https:', 'blob:'],
               connectSrc: [
                 "'self'",
                 'https://api.binance.com',
+                'https://data-api.binance.vision',
+                'https://api.bybit.com',
+                'https://api.coingecko.com',
                 'https://api.resend.com',
                 'https://*.tradingview.com',
-                'wss://*.tradingview.com'
+                'wss://*.tradingview.com',
+                'https://www.clarity.ms',
+                'https://*.clarity.ms'
               ],
               frameSrc: ["'self'", 'https://*.tradingview.com'],
-              fontSrc: ["'self'", 'https:', 'data:'],
+              fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://fonts.googleapis.com', 'https:', 'data:'],
               workerSrc: ["'self'", 'blob:'],
               objectSrc: ["'none'"],
               frameAncestors: ["'self'", 'http://localhost:8090', 'http://127.0.0.1:8090'],
