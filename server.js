@@ -486,11 +486,14 @@ app.use(async function ipBlockMiddleware(req, res, next) {
   next();
 });
 
-// Pre-register critical order routes so they never return 404 during DB startup
-// p2pOrderController is null until DB connects — returns 503 until ready
-app.post('/api/p2p/orders', async (req, res, next) => {
-  if (!p2pOrderController) {
-    return res.status(503).json({ message: 'Service starting up. Please try again in a moment.' });
+// Pre-register JSON fallback for all API/auth routes so startup never returns HTML 404
+// Real route handlers registered after DB connects will shadow these via Express ordering
+let _dbReady = false;
+app.use(function apiStartupFallback(req, res, next) {
+  if (_dbReady) return next();
+  const isApi = req.path.startsWith('/api/') || req.path.startsWith('/auth/') || req.path.startsWith('/p2p/');
+  if (isApi && req.method !== 'GET') {
+    return res.status(503).json({ message: 'Service starting up. Please wait a moment and try again.' });
   }
   next();
 });
@@ -6722,6 +6725,8 @@ async function boot() {
     if (seededAdmin) {
       console.log(`Admin seed ensured for ${seededAdmin.email} (${seededAdmin.role})`);
     }
+
+    _dbReady = true; // Mark DB as ready — startup fallback middleware now passes through
 
     app.use(apiNotFoundHandler);
 
