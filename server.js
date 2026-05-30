@@ -6687,6 +6687,17 @@ async function boot() {
     await adminStore.ensureIndexes();
     console.log('MongoDB indexes ensured');
 
+    // Warm up connection pool — fire lightweight queries so first user request is fast
+    try {
+      const cols = getCollections();
+      await Promise.all([
+        cols.p2pCredentials.findOne({}, { projection: { _id: 1 } }),
+        cols.p2pOffers.findOne({ status: 'ACTIVE' }, { projection: { _id: 1 } }),
+        cols.p2pOrders.findOne({}, { projection: { _id: 1 } })
+      ]);
+      console.log('MongoDB connection pool warmed up');
+    } catch (_) {}
+
     const migration = await repos.migrateLegacyLeadsJsonOnce(dataFile);
     if (migration.migrated) {
       console.log(`Legacy leads migration completed. Imported ${migration.imported || 0} rows.`);
