@@ -1,6 +1,24 @@
 require('dotenv').config();
 
 const crypto = require('crypto');
+
+// Sanitize internal error messages — never expose raw MongoDB/driver errors to client
+function safeErrorMessage(error, fallback = 'Server error. Please try again.') {
+  const msg = String(error?.message || '');
+  // Hide raw MongoDB/connection errors
+  if (
+    msg.includes('timed out') ||
+    msg.includes('MongoError') ||
+    msg.includes('MongoServerError') ||
+    msg.includes('ECONNREFUSED') ||
+    msg.includes('topology') ||
+    msg.includes('27017') ||
+    msg.includes('connection ')
+  ) {
+    return fallback;
+  }
+  return msg || fallback;
+}
 let geoip = null;
 try { geoip = require('geoip-lite'); } catch(e) { /* optional */ }
 const { localFaceMatch } = require('./services/local-face-match');
