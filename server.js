@@ -1983,7 +1983,7 @@ app.post('/api/p2p/login', async (req, res) => {
 
   try {
     const existingCredential = await repos.getP2PCredential(email);
-    if (existingCredential && !repos.verifyPassword(password, existingCredential.passwordHash)) {
+    if (existingCredential && !(await repos.verifyPassword(password, existingCredential.passwordHash))) {
       if (auditLogService) {
         await auditLogService.safeLog({
           userId: '',
@@ -2228,7 +2228,7 @@ app.post('/api/p2p/reset-password', async (req, res) => {
       await repos.upsertSignupOtp(email, { ...otp, attempts }, { purpose: 'p2p_password_reset' });
       return res.status(400).json({ message: 'Invalid reset code.' });
     }
-    const hash = repos.hashPassword(newPassword);
+    const hash = await repos.hashPassword(newPassword);
     await repos.updateP2PCredentialPassword(email, hash);
     await repos.deleteSignupOtp(email, { purpose: 'p2p_password_reset' });
     return res.json({ message: 'Password reset successfully. Please login.' });

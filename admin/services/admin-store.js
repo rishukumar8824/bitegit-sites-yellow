@@ -495,7 +495,7 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
         id: makeId('adm'),
         email,
         username,
-        passwordHash: repos.hashPassword(password),
+        passwordHash: await repos.hashPassword(password),
         role,
         status: 'ACTIVE',
         twoFactor: {
@@ -521,7 +521,7 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       updateFields.email = email;
     }
     if (forcePasswordSync || !existing.passwordHash) {
-      updateFields.passwordHash = repos.hashPassword(password);
+      updateFields.passwordHash = await repos.hashPassword(password);
     }
     if (forceRoleSync || !existing.role) {
       updateFields.role = role;
@@ -999,7 +999,7 @@ function createAdminStore({ collections, repos, walletService, tokenService, isD
       { email: profile.email },
       {
         $set: {
-          passwordHash: repos.hashPassword(String(newPassword || '')),
+          passwordHash: await repos.hashPassword(String(newPassword || '')),
           updatedAt: new Date()
         }
       }

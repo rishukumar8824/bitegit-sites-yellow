@@ -128,7 +128,7 @@ function createAdminControllers({
 
     const admin = typeof adminStore.getAdminByIdentifier === 'function' ? await adminStore.getAdminByIdentifier(identifier) : null;
     const loginEmail = String(admin?.email || identifier).trim().toLowerCase();
-    if (!admin || !repos.verifyPassword(password, admin.passwordHash)) {
+    if (!admin || !(await repos.verifyPassword(password, admin.passwordHash))) {
       await adminStore.writeLoginHistory({
         adminId: admin?.id || '',
         email: loginEmail,

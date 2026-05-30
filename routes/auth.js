@@ -362,7 +362,7 @@ function registerAuthRoutes(app, deps) {
 
     try {
       const credential = await repos.getP2PCredential(email);
-      if (!credential || !repos.verifyPassword(password, credential.passwordHash)) {
+      if (!credential || !(await repos.verifyPassword(password, credential.passwordHash))) {
         req._recordFailedAttempt?.();
         await safeAuditLog({
           userId: '',
@@ -497,7 +497,7 @@ function registerAuthRoutes(app, deps) {
         return res.status(400).json({ message: otpResult.message });
       }
 
-      await repos.setP2PCredential(email, repos.hashPassword(password), {
+      await repos.setP2PCredential(email, await repos.hashPassword(password), {
         role: 'USER',
         fullName,
         mobile,
@@ -611,7 +611,7 @@ function registerAuthRoutes(app, deps) {
         return res.status(400).json({ message: otpResult.message });
       }
 
-      await repos.updateP2PCredentialPassword(email, repos.hashPassword(nextPassword));
+      await repos.updateP2PCredentialPassword(email, await repos.hashPassword(nextPassword));
       await repos.deleteRefreshTokensByUserId(buildP2PUserFromEmail(email, credential.role || 'USER').id);
 
       await safeAuditLog({
