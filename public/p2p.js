@@ -2962,6 +2962,12 @@ async function loginUser() {
     // Always wipe all order state on login — guarantees zero cross-user contamination
     _clearOrdersCache({ preserveSnapshots: true });
 
+    // Save tokens to localStorage so buildP2PAuthHeaders() works on subsequent requests
+    try {
+      if (data.accessToken) localStorage.setItem('bitegit_token', data.accessToken);
+      if (data.refreshToken) localStorage.setItem('bitegit_refresh_token', data.refreshToken);
+    } catch(_) {}
+
     _setCurrentUser(normalizeCurrentUserPayload(data.user));
     if (!currentUser) {
       throw new Error('Login session payload is incomplete.');
