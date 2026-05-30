@@ -130,8 +130,12 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
         return res.status(400).json({ success: false, message: 'adId is required.' });
       }
 
-      // Block if user already has an active or disputed order
-      const myActive = await repos.listMyActiveOrders(req.p2pUser.id);
+      // Run active-order check and offer fetch in parallel — saves ~1-2s
+      const [myActive, offer] = await Promise.all([
+        repos.listMyActiveOrders(req.p2pUser.id),
+        repos.getOfferById(adId)
+      ]);
+
       const hasActiveOrder = myActive.some(o => ['CREATED', 'PENDING', 'PAYMENT_SENT', 'PAID', 'DISPUTED'].includes(o.status));
       if (hasActiveOrder) {
         const disputed = myActive.some(o => o.status === 'DISPUTED');
@@ -140,8 +144,6 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
           : 'You already have an active order. Complete or cancel it first.';
         return res.status(409).json({ success: false, message: msg, code: 'ACTIVE_ORDER_EXISTS' });
       }
-
-      const offer = await repos.getOfferById(adId);
       if (!offer) {
         return res.status(404).json({ success: false, message: 'Ad not found.' });
       }
@@ -203,42 +205,37 @@ function createP2POrderController({ repos, walletService, orderTtlMs = 15 * 60 *
       const buyer = adType === 'SELL' ? req.p2pUser : owner;
       let seller = adType === 'SELL' ? owner : req.p2pUser;
 
-      // Enrich seller email/username from DB when admin JWT provides no email claim
-      // (admin tokens have no email field → seller.email is '' → all participant checks break)
-      if ((!seller.email || !seller.username || seller.username === 'admin') && seller.id) {
-        try {
-          const sellerCred = typeof repos.getP2PCredentialByUserId === 'function'
-            ? await repos.getP2PCredentialByUserId(seller.id)
-            : null;
-          if (sellerCred) {
-            seller = {
-              ...seller,
-              email: seller.email || sellerCred.email || '',
-              username: (seller.username && seller.username !== 'admin')
-                ? seller.username
-                : (sellerCred.username || sellerCred.email || seller.username || '')
-            };
-          }
-        } catch (_) {}
-      }
-
-      // Same enrichment for buyer (defensive — usually buyer is req.p2pUser with full info)
+      // Enrich seller + buyer in parallel (saves ~1s vs sequential)
+      const needsSellerEnrich = (!seller.email || !seller.username || seller.username === 'admin') && seller.id;
       let buyerObj = buyer;
-      if ((!buyerObj.email || !buyerObj.username || buyerObj.username === 'admin') && buyerObj.id) {
-        try {
-          const buyerCred = typeof repos.getP2PCredentialByUserId === 'function'
-            ? await repos.getP2PCredentialByUserId(buyerObj.id)
-            : null;
-          if (buyerCred) {
-            buyerObj = {
-              ...buyerObj,
-              email: buyerObj.email || buyerCred.email || '',
-              username: (buyerObj.username && buyerObj.username !== 'admin')
-                ? buyerObj.username
-                : (buyerCred.username || buyerCred.email || buyerObj.username || '')
-            };
-          }
-        } catch (_) {}
+      const needsBuyerEnrich = (!buyerObj.email || !buyerObj.username || buyerObj.username === 'admin') && buyerObj.id;
+
+      const [sellerCred, buyerCred] = await Promise.all([
+        needsSellerEnrich && typeof repos.getP2PCredentialByUserId === 'function'
+          ? repos.getP2PCredentialByUserId(seller.id).catch(() => null)
+          : Promise.resolve(null),
+        needsBuyerEnrich && typeof repos.getP2PCredentialByUserId === 'function'
+          ? repos.getP2PCredentialByUserId(buyerObj.id).catch(() => null)
+          : Promise.resolve(null)
+      ]);
+
+      if (sellerCred) {
+        seller = {
+          ...seller,
+          email: seller.email || sellerCred.email || '',
+          username: (seller.username && seller.username !== 'admin')
+            ? seller.username
+            : (sellerCred.username || sellerCred.email || seller.username || '')
+        };
+      }
+      if (buyerCred) {
+        buyerObj = {
+          ...buyerObj,
+          email: buyerObj.email || buyerCred.email || '',
+          username: (buyerObj.username && buyerObj.username !== 'admin')
+            ? buyerObj.username
+            : (buyerCred.username || buyerCred.email || buyerObj.username || '')
+        };
       }
 
       if (String(buyerObj.id || '').trim() === String(seller.id || '').trim()) {
