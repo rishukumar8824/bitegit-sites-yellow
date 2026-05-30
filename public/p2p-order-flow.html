@@ -3088,9 +3088,13 @@
       if (!currentAd || !currentAd.id) { showToast('Ad not loaded. Please go back and try again.'); return; }
       var body = { adId: currentAd.id, paymentMethod: payment };
       if (isFiat) body.fiatAmount = fiatAmt; else body.cryptoAmount = cryptoAmt;
+      var _tok = '';
+      try { _tok = String(localStorage.getItem('bitegit_token') || '').trim(); } catch(_) {}
+      var _orderHeaders = { 'Content-Type': 'application/json' };
+      if (_tok) _orderHeaders['Authorization'] = 'Bearer ' + _tok;
       var createResult = await fetchJsonWithTimeout('/api/p2p/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _orderHeaders,
         credentials: 'include',
         body: JSON.stringify(body)
       }, 12000);
