@@ -1,9 +1,8 @@
 const { getIpLocation } = require('../lib/geo-lookup');
 
 function normalizeIp(req) {
-  const forwardedRaw = String(req.headers['x-forwarded-for'] || '').trim();
-  const firstForwardedIp = forwardedRaw.split(',')[0].trim();
-  return firstForwardedIp || String(req.ip || req.connection?.remoteAddress || 'unknown');
+  // Use req.ip which is set correctly by Express trust proxy — safe from spoofing
+  return String(req.ip || req.connection?.remoteAddress || 'unknown');
 }
 
 function createIpRateLimiter({ windowMs, maxAttempts }) {

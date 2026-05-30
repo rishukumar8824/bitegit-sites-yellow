@@ -1298,8 +1298,8 @@ function getGeoInfo(ip) {
 }
 
 const loginAttemptLimiter = createIpAttemptLimiter({
-  maxAttempts: 5,
-  windowMs: 10 * 60 * 1000   // 5 attempts per 10 minutes
+  maxAttempts: 30,
+  windowMs: 10 * 60 * 1000   // 30 attempts per 10 minutes
 });
 
 // OTP send limiter — 3 per IP per 10 min (forgot-password + signup send-code)
