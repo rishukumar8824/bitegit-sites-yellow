@@ -486,6 +486,15 @@ app.use(async function ipBlockMiddleware(req, res, next) {
   next();
 });
 
+// Pre-register critical order routes so they never return 404 during DB startup
+// p2pOrderController is null until DB connects — returns 503 until ready
+app.post('/api/p2p/orders', async (req, res, next) => {
+  if (!p2pOrderController) {
+    return res.status(503).json({ message: 'Service starting up. Please try again in a moment.' });
+  }
+  next();
+});
+
 // Rewrite /api/v1/* → /* so frontend calls like /api/v1/auth/login hit /auth/login
 // (skip /api/v1/market/* which has its own explicit routes)
 app.use(function(req, res, next) {
