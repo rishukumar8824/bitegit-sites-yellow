@@ -1201,6 +1201,13 @@ function createToken() {
 
 function createIpAttemptLimiter({ maxAttempts, windowMs }) {
   const store = new Map();
+  // Auto-cleanup expired entries every 5 minutes to prevent memory leak / OOM crash
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, val] of store) {
+      if (now > val.resetAt) store.delete(key);
+    }
+  }, 5 * 60 * 1000).unref();
   return function checkAttempt(ipKey) {
     const key = String(ipKey || 'unknown');
     const now = Date.now();
