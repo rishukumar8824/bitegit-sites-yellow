@@ -3687,7 +3687,8 @@ async function submitDealOrder() {
 function renderLiveOrders(orders) {
   const incomingOrders = Array.isArray(orders) ? orders : [];
   const currentUserId = String(currentUser?.id || '').trim();
-  const hydratedOrders = _ordMergeById(incomingOrders, _ordLoadSavedSnapshots({ activeOnly: false }));
+  // Snapshots first so server data (isParticipant, myRole) always wins on override
+  const hydratedOrders = _ordMergeById(_ordLoadSavedSnapshots({ activeOnly: false }), incomingOrders);
   const participantOrders = hydratedOrders
     .map((order) => {
       if (!order || typeof order !== 'object') {
