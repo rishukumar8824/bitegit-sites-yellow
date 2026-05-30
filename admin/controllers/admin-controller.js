@@ -354,13 +354,39 @@ function createAdminControllers({
     });
   }
 
+  function normalizeAdjustmentAmount(body = {}) {
+    const rawAmount = Number(body.amount || 0);
+    const actionType = String(body.type || '')
+      .trim()
+      .toUpperCase();
+
+    if (!Number.isFinite(rawAmount) || rawAmount === 0) {
+      return { error: 'Amount must be a non-zero number.' };
+    }
+
+    if (!actionType) {
+      return { amount: rawAmount, actionType: rawAmount > 0 ? 'ADD' : 'SUBTRACT' };
+    }
+
+    if (['ADD', 'CREDIT'].includes(actionType)) {
+      return { amount: Math.abs(rawAmount), actionType: 'ADD' };
+    }
+
+    if (['SUBTRACT', 'DEBIT', 'REMOVE'].includes(actionType)) {
+      return { amount: -Math.abs(rawAmount), actionType: 'SUBTRACT' };
+    }
+
+    return { error: 'Adjustment type must be ADD or SUBTRACT.' };
+  }
+
   async function adjustUserBalance(req, res) {
-    const amount = Number(req.body?.amount || 0);
+    const normalizedAdjustment = normalizeAdjustmentAmount(req.body || {});
+    const amount = normalizedAdjustment.amount;
     const reason = String(req.body?.reason || '').trim();
     const coin = String(req.body?.coin || 'USDT').trim().toUpperCase();
 
-    if (!Number.isFinite(amount) || amount === 0) {
-      return res.status(400).json({ message: 'Amount must be a non-zero number.' });
+    if (normalizedAdjustment.error) {
+      return res.status(400).json({ message: normalizedAdjustment.error });
     }
     if (!reason) {
       return res.status(400).json({ message: 'Reason is required for balance adjustment.' });
@@ -373,7 +399,7 @@ function createAdminControllers({
       action: 'balance_adjustment',
       entityType: 'wallet',
       entityId: req.params.userId,
-      meta: { amount, reason, coin }
+      meta: { amount, type: normalizedAdjustment.actionType, reason, coin }
     });
 
     return res.json({

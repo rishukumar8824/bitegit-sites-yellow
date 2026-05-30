@@ -3295,7 +3295,8 @@ async function upAction(action) {
       const reason = document.getElementById('upAdjustReason').value.trim();
       if (!amount || amount <= 0) return showMessage('Enter a valid amount.','error');
       if (!reason) return showMessage('Reason is required.','error');
-      await apiRequest(`/users/${encodeURIComponent(_upUserId)}/adjust-balance`, { method:'POST', body:JSON.stringify({type,amount,reason}) });
+      const signedAmount = type === 'SUBTRACT' ? -Math.abs(amount) : Math.abs(amount);
+      await apiRequest(`/users/${encodeURIComponent(_upUserId)}/adjust-balance`, { method:'POST', body:JSON.stringify({type,amount:signedAmount,reason,coin:'USDT'}) });
       showMessage(`Balance ${type==='ADD'?'added':'subtracted'} successfully.`,'success');
       document.getElementById('upAdjustAmount').value='';
       document.getElementById('upAdjustReason').value='';
